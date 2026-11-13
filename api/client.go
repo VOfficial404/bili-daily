@@ -110,21 +110,24 @@ func (c *Client) Ping(ctx context.Context) (Ping, error) {
 	return p, err
 }
 
-func (c *Client) State(ctx context.Context) (State, error) {
-	var s State
-	return s, c.do(ctx, http.MethodGet, "/api/state", nil, &s)
+// 下面的方法都用具名返回值：`return v, c.do(…, &v)` 里读 v 和调用 do 的先后 Go 没有规定，
+// 可能返回的是 do 填充之前的值。
+
+func (c *Client) State(ctx context.Context) (s State, err error) {
+	err = c.do(ctx, http.MethodGet, "/api/state", nil, &s)
+	return s, err
 }
 
 // StartQR 申请一张登录二维码
-func (c *Client) StartQR(ctx context.Context) (QR, error) {
-	var q QR
-	return q, c.do(ctx, http.MethodPost, "/api/qr", nil, &q)
+func (c *Client) StartQR(ctx context.Context) (q QR, err error) {
+	err = c.do(ctx, http.MethodPost, "/api/qr", nil, &q)
+	return q, err
 }
 
 // PollQR 查询扫码状态
-func (c *Client) PollQR(ctx context.Context, id string) (QR, error) {
-	var q QR
-	return q, c.do(ctx, http.MethodGet, "/api/qr/"+url.PathEscape(id), nil, &q)
+func (c *Client) PollQR(ctx context.Context, id string) (q QR, err error) {
+	err = c.do(ctx, http.MethodGet, "/api/qr/"+url.PathEscape(id), nil, &q)
+	return q, err
 }
 
 // RunAll 让所有参加每日计划的账号立即跑一轮
@@ -157,28 +160,28 @@ func (c *Client) Remove(ctx context.Context, mid string) error {
 }
 
 // Groups 列出账号的关注分组
-func (c *Client) Groups(ctx context.Context, mid string) ([]Group, error) {
-	var g []Group
-	return g, c.do(ctx, http.MethodGet, "/api/accounts/"+mid+"/groups", nil, &g)
+func (c *Client) Groups(ctx context.Context, mid string) (g []Group, err error) {
+	err = c.do(ctx, http.MethodGet, "/api/accounts/"+mid+"/groups", nil, &g)
+	return g, err
 }
 
 // Runs 返回最近的运行报告摘要，从新到旧；mid 为空时是所有账号的
-func (c *Client) Runs(ctx context.Context, mid string, limit int) ([]RunSummary, error) {
-	var r []RunSummary
+func (c *Client) Runs(ctx context.Context, mid string, limit int) (r []RunSummary, err error) {
 	q := url.Values{"mid": {mid}, "limit": {strconv.Itoa(limit)}}
-	return r, c.do(ctx, http.MethodGet, "/api/runs?"+q.Encode(), nil, &r)
+	err = c.do(ctx, http.MethodGet, "/api/runs?"+q.Encode(), nil, &r)
+	return r, err
 }
 
 // RunDetail 返回一份完整的运行报告
-func (c *Client) RunDetail(ctx context.Context, id string) (Run, error) {
-	var r Run
-	return r, c.do(ctx, http.MethodGet, "/api/runs/"+url.PathEscape(id), nil, &r)
+func (c *Client) RunDetail(ctx context.Context, id string) (r Run, err error) {
+	err = c.do(ctx, http.MethodGet, "/api/runs/"+url.PathEscape(id), nil, &r)
+	return r, err
 }
 
 // SaveSettings 保存设置，返回服务端整理过的设置
-func (c *Client) SaveSettings(ctx context.Context, s Settings) (Settings, error) {
-	var out Settings
-	return out, c.do(ctx, http.MethodPut, "/api/settings", s, &out)
+func (c *Client) SaveSettings(ctx context.Context, s Settings) (out Settings, err error) {
+	err = c.do(ctx, http.MethodPut, "/api/settings", s, &out)
+	return out, err
 }
 
 // TestNotify 用 n（不一定保存过）发一条测试消息
@@ -187,14 +190,13 @@ func (c *Client) TestNotify(ctx context.Context, n Notify) error {
 }
 
 // TestProxy 查询经过 proxy 时 B 站看到的出口 IP
-func (c *Client) TestProxy(ctx context.Context, proxy string) (Egress, error) {
-	var e Egress
-	return e, c.do(ctx, http.MethodPost, "/api/proxy/test", map[string]string{"proxy": proxy}, &e)
+func (c *Client) TestProxy(ctx context.Context, proxy string) (e Egress, err error) {
+	err = c.do(ctx, http.MethodPost, "/api/proxy/test", map[string]string{"proxy": proxy}, &e)
+	return e, err
 }
 
 // Logs 返回序号大于 after 的日志；level 是最低级别（空表示全部），mid 不为空时只看一个账号
-func (c *Client) Logs(ctx context.Context, after int64, level, mid string) ([]LogEntry, error) {
-	var l []LogEntry
+func (c *Client) Logs(ctx context.Context, after int64, level, mid string) (l []LogEntry, err error) {
 	q := url.Values{"after": {strconv.FormatInt(after, 10)}}
 	if level != "" {
 		q.Set("level", level)
@@ -202,5 +204,6 @@ func (c *Client) Logs(ctx context.Context, after int64, level, mid string) ([]Lo
 	if mid != "" {
 		q.Set("mid", mid)
 	}
-	return l, c.do(ctx, http.MethodGet, "/api/logs?"+q.Encode(), nil, &l)
+	err = c.do(ctx, http.MethodGet, "/api/logs?"+q.Encode(), nil, &l)
+	return l, err
 }

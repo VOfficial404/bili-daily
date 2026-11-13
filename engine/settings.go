@@ -189,8 +189,24 @@ func (e *Engine) loadSettings() api.Settings {
 	return s
 }
 
+func cloneSettings(s api.Settings) api.Settings {
+	s.Tasks.Daily.UpIDs = slices.Clone(s.Tasks.Daily.UpIDs)
+	s.Tasks.LiveLottery.Include = slices.Clone(s.Tasks.LiveLottery.Include)
+	s.Tasks.LiveLottery.Exclude = slices.Clone(s.Tasks.LiveLottery.Exclude)
+	s.Tasks.Unfollow.Keep = slices.Clone(s.Tasks.Unfollow.Keep)
+	return s
+}
+
 // UpdateSettings 检查、保存并立即应用新设置
 func (e *Engine) UpdateSettings(s api.Settings) (api.Settings, error) {
+	e.settingsMu.Lock()
+	defer e.settingsMu.Unlock()
+	return e.updateSettings(s)
+}
+
+// updateSettings 的调用方持有 settingsMu，覆盖整个读改写事务。
+func (e *Engine) updateSettings(s api.Settings) (api.Settings, error) {
+	s = cloneSettings(s)
 	if err := checkSettings(&s); err != nil {
 		return s, err
 	}
@@ -199,7 +215,7 @@ func (e *Engine) UpdateSettings(s api.Settings) (api.Settings, error) {
 	}
 	e.mu.Lock()
 	old := e.set
-	e.set = s
+	e.set = cloneSettings(s)
 	e.mu.Unlock()
 	e.logs.setLevel(parseLevel(s.LogLevel))
 	if old.Proxy != s.Proxy {

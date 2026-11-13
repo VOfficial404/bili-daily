@@ -6,6 +6,8 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -146,6 +148,12 @@ func TestRefreshCookieSwapsSessionAndConfirmsWithOldToken(t *testing.T) {
 	if refresh.Form.Get("refresh_csrf") != "refresh-csrf-value" || refresh.Form.Get("refresh_token") != "old-token" || refresh.Form.Get("csrf") != "old-csrf" {
 		t.Errorf("refresh form = %v", refresh.Form)
 	}
+	if calls := srv.Calls("passport.bilibili.com/x/passport-login/web/confirm/refresh"); len(calls) != 0 {
+		t.Fatalf("调用方保存前不应确认旧会话：%v", calls)
+	}
+	if err := c.ConfirmRefresh(context.Background(), "old-token"); err != nil {
+		t.Fatal(err)
+	}
 	confirm := srv.Calls("passport.bilibili.com/x/passport-login/web/confirm/refresh")[0]
 	if confirm.Form.Get("refresh_token") != "old-token" || confirm.Form.Get("csrf") != "new-csrf" || confirm.Cookie["SESSDATA"] != "new-sess" {
 		t.Errorf("confirm form = %v cookie = %v", confirm.Form, confirm.Cookie)
@@ -200,5 +208,25 @@ func TestWebQRLoginCollectsCookies(t *testing.T) {
 	}
 	if s.RefreshToken != "rt" || s.Cookies["SESSDATA"] != "s" || s.Cookies["bili_jct"] != "j" || s.Cookies["DedeUserID"] != "42" {
 		t.Fatalf("session = %+v", s)
+	}
+}
+
+func TestTransportErrorsNeverLogRequestOrProxyCredentials(t *testing.T) {
+	c := New(roundTripper(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("wrapped: %w", &url.Error{
+			Op: "Get", URL: "https://proxy-user:proxy-password@proxy.invalid/?qrcode_key=qr-secret&csrf=csrf-secret",
+			Err: errors.New("proxy https://proxy-user:proxy-password@proxy.invalid/ refused request"),
+		})
+	}), nil)
+	var logs strings.Builder
+	c.Debugf = func(format string, args ...any) { fmt.Fprintf(&logs, format, args...) }
+	err := c.Get(context.Background(), "https://passport.bilibili.com/poll?qrcode_key=qr-secret&csrf=csrf-secret", nil, nil)
+	if err == nil || logs.Len() == 0 {
+		t.Fatal("expected error and debug log")
+	}
+	for _, secret := range []string{"qr-secret", "csrf-secret", "proxy-user", "proxy-password", "https://"} {
+		if strings.Contains(logs.String(), secret) || strings.Contains(err.Error(), secret) {
+			t.Fatalf("secret %q leaked: log=%q error=%v", secret, logs.String(), err)
+		}
 	}
 }

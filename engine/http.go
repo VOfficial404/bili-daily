@@ -217,7 +217,7 @@ func (e *Engine) handlePatch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	a.update(func(st *accountState) {
+	err := a.update(func(st *accountState) {
 		if p.Enabled != nil {
 			st.Enabled = *p.Enabled
 		}
@@ -225,6 +225,10 @@ func (e *Engine) handlePatch(w http.ResponseWriter, r *http.Request) {
 			st.DisabledTasks = slices.Compact(slices.Sorted(slices.Values(*p.DisabledTasks)))
 		}
 	})
+	if err != nil {
+		writeActionErr(w, err)
+		return
+	}
 	a.poke()
 	writeOK(w)
 }
@@ -276,12 +280,14 @@ func (e *Engine) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *Engine) handleSettings(w http.ResponseWriter, r *http.Request) {
+	e.settingsMu.Lock()
+	defer e.settingsMu.Unlock()
 	// 从当前设置开始解析：请求里没有的项保持不变
 	s := e.Settings()
 	if !readBody(w, r, &s) {
 		return
 	}
-	s, err := e.UpdateSettings(s)
+	s, err := e.updateSettings(s)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

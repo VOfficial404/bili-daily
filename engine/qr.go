@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"rsc.io/qr"
@@ -18,6 +19,7 @@ var errNoQR = errors.New("二维码不存在或已经过期，请重新获取")
 
 // qrLogin 是一次进行中的扫码登录
 type qrLogin struct {
+	mu      sync.Mutex // 一次登录的重复轮询共享结果，只提交一次会话
 	q       *bili.WebQR
 	c       *bili.Client
 	created time.Time
@@ -65,6 +67,8 @@ func (e *Engine) PollQR(ctx context.Context, id string) (api.QR, error) {
 	if l == nil {
 		return api.QR{}, errNoQR
 	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.result != nil {
 		return *l.result, nil
 	}
@@ -93,13 +97,12 @@ func (e *Engine) PollQR(ctx context.Context, id string) (api.QR, error) {
 			}
 		}
 	}
-	mid, err := e.saveSession(session{Cookies: sess.Cookies, RefreshToken: sess.RefreshToken, CookieExpires: sess.Expires})
+	mid, err := e.saveLoginSession(ctx, session{Cookies: sess.Cookies, RefreshToken: sess.RefreshToken, CookieExpires: sess.Expires})
 	if err != nil {
 		return out, err
 	}
 	out.Mid = mid
 	e.finishQR(l, out)
-	e.accountLoggedIn(mid)
 	if a := e.account(mid); a != nil {
 		a.update(func(st *accountState) {
 			st.CookieExpires, st.CookieDate = nil, ""
@@ -121,7 +124,56 @@ func (e *Engine) PollQR(ctx context.Context, id string) (api.QR, error) {
 }
 
 func (e *Engine) finishQR(l *qrLogin, result api.QR) {
-	e.mu.Lock()
 	l.result = &result
-	e.mu.Unlock()
+}
+
+// saveLoginSession 等旧运行退出后再替换凭据，避免 Cookie 刷新覆盖扫码结果。
+func (e *Engine) saveLoginSession(ctx context.Context, s session) (string, error) {
+	e.loginMu.Lock()
+	defer e.loginMu.Unlock()
+	mid := s.Cookies["DedeUserID"]
+	a := e.account(mid)
+	if a != nil {
+		a.lifecycleMu.Lock()
+		defer a.lifecycleMu.Unlock()
+		a.mu.Lock()
+		if a.closing {
+			a.mu.Unlock()
+			return "", errNoAccount
+		}
+		a.paused = true
+		done := a.runDone
+		if a.cancel != nil {
+			a.cancel()
+		}
+		a.mu.Unlock()
+		defer func() {
+			a.mu.Lock()
+			a.paused = false
+			a.mu.Unlock()
+			a.poke()
+		}()
+		if done != nil {
+			select {
+			case <-done:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		// close 与落盘共用 mu：关闭准入后不会再写入替换凭据。
+		a.mu.Lock()
+		if a.closing {
+			a.mu.Unlock()
+			return "", errNoAccount
+		}
+		_, err := e.saveSession(s)
+		a.mu.Unlock()
+		if err != nil {
+			return "", err
+		}
+	} else if _, err := e.saveSession(s); err != nil {
+		return "", err
+	}
+	e.accountLoggedIn(mid)
+	return mid, nil
 }

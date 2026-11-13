@@ -173,6 +173,7 @@ func (e *Engine) checkCookie(x *Ctx) {
 		x.Skip("Cookie 刷新", "B 站提示 Cookie 该刷新了，但这个账号没有 refresh_token，过期后需要重新扫码")
 		return
 	}
+	oldToken := sess.RefreshToken
 	s, err := x.C.RefreshCookie(x, sess.RefreshToken, ts)
 	if err != nil {
 		if errors.Is(err, bili.ErrRefreshMismatch) {
@@ -190,6 +191,9 @@ func (e *Engine) checkCookie(x *Ctx) {
 	if _, err := e.saveSession(sess); err != nil {
 		x.Failf("Cookie 刷新", bili.ReasonOther, "新 Cookie 保存失败：%v", err)
 		return
+	}
+	if err := x.C.ConfirmRefresh(x, oldToken); err != nil {
+		a.warnf("新 Cookie 已保存，但作废旧会话失败：%v", err)
 	}
 	if s.Expires.IsZero() {
 		x.OK("Cookie 刷新", "已换成新的 Cookie")

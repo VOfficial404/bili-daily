@@ -207,7 +207,7 @@ func (c *Client) send(ctx context.Context, r Request) (*http.Response, []byte, e
 	start := time.Now()
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		c.debugf("%s %s：%v（%d ms）", req.Method, path, err, time.Since(start).Milliseconds())
+		c.debugf("%s %s：%s（%d ms）", req.Method, path, netMessage(err), time.Since(start).Milliseconds())
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
 		}

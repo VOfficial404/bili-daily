@@ -48,7 +48,7 @@ const usage = `bili-tools：B 站每日任务
 func main() {
 	cmd := "serve"
 	args := os.Args[1:]
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
 	}
 	var err error

@@ -1,0 +1,74 @@
+name: Mobile
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ["api/**", "bili/**", "engine/**", "mobile/**", ".github/workflows/mobile.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      NSGO_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      NSGO_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: mobile/go.mod
+      # 调试包也要沿用签名，否则下一次无法覆盖安装。
+      - uses: actions/cache@v4
+        if: env.ANDROID_KEYSTORE == ''
+        with:
+          path: mobile/.nsgo/android/debug.pem
+          key: android-debug-signing-v1
+      - name: Build APK
+        run: |
+          if [ -n "$ANDROID_KEYSTORE" ]; then
+            printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.p12"
+            go tool nsgo build -target android_arm64 -keystore "$RUNNER_TEMP/release.p12" -key-alias "$ANDROID_KEY_ALIAS"
+          else
+            go tool nsgo build -target android_arm64
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android
+          if-no-files-found: error
+          path: |
+            mobile/dist/releases/*.apk
+            mobile/dist/releases/*.apk.sha256
+
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: mobile/go.mod
+      # 没有 provisioning profile：生成未签名 IPA，用户用 AltStore/SideStore 自己签名。
+      - run: go tool nsgo build -target ios
+      - name: Name unsigned IPA
+        run: |
+          for file in dist/releases/*-ios.ipa; do
+            mv "$file" "${file%-ios.ipa}-ios-unsigned.ipa"
+          done
+          rm -f dist/releases/*-ios.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iOS
+          if-no-files-found: error
+          path: mobile/dist/releases/*-ios-unsigned.ipa

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/VOfficial404/bili-tools/api"
@@ -24,8 +25,9 @@ import (
 const keepRuns = 60
 
 var (
-	midRe   = regexp.MustCompile(`^[0-9]{1,20}$`)
-	runIDRe = regexp.MustCompile(`^[0-9]{8}T[0-9]{9}-([0-9]{1,20})$`)
+	midRe        = regexp.MustCompile(`^[0-9]{1,20}$`)
+	runIDRe      = regexp.MustCompile(`^[0-9]{8}T[0-9]{9}-([0-9]{1,20})$`)
+	jsonRenameMu sync.Mutex // Windows 不允许同时替换同一个目标；仅串行化最后的 rename
 )
 
 var errNoSession = errors.New("还没有登录会话，请先扫码登录")
@@ -46,10 +48,21 @@ func writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
+	if err != nil {
 		return err
 	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	jsonRenameMu.Lock()
+	defer jsonRenameMu.Unlock()
 	return os.Rename(tmp, path)
 }
 

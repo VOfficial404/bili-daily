@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 )
 
@@ -128,6 +129,10 @@ func IsCode(err error, codes ...int) bool {
 func IsNotLogin(err error) bool { return Classify(err) == ReasonNotLogin }
 
 func netMessage(err error) string {
+	var ue *url.Error
+	for errors.As(err, &ue) {
+		err = ue.Err
+	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return "连接超时"
@@ -136,10 +141,18 @@ func netMessage(err error) string {
 	if errors.As(err, &dns) {
 		return "域名解析失败"
 	}
-	s := err.Error()
-	// 去掉 Go 加在前面的 `Get "https://…": `，里面可能带着查询参数
-	if i := strings.LastIndex(s, `": `); i >= 0 {
-		s = s[i+3:]
+	// 底层错误也可能含代理地址和凭据，仅返回已知的网络原因。
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "connection refused"), strings.Contains(s, "actively refused"):
+		return "连接被拒绝"
+	case strings.Contains(s, "connection reset"), strings.Contains(s, "forcibly closed"):
+		return "连接被重置"
+	case strings.Contains(s, "eof"):
+		return "连接提前关闭"
+	case strings.Contains(s, "certificate"):
+		return "TLS 证书校验失败"
+	default:
+		return "网络请求失败"
 	}
-	return s
 }

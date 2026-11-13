@@ -17,14 +17,18 @@ type account struct {
 	e   *Engine
 	mid string
 
-	mu       sync.Mutex
-	st       accountState
-	running  *api.Progress
-	queued   bool // 手动运行已经排上，还没开始
-	cancel   context.CancelFunc
-	retryAt  time.Time // 每日计划因为网络问题没跑成时，什么时候再试
-	retryDay string
-	retries  int
+	mu          sync.Mutex
+	st          accountState
+	running     *api.Progress
+	queued      bool // 手动运行已经排上，还没开始
+	cancel      context.CancelFunc
+	runDone     chan struct{}
+	closing     bool
+	paused      bool
+	lifecycleMu sync.Mutex // 串行化重新登录与删除，等待运行时不持有 mu
+	retryAt     time.Time  // 每日计划因为网络问题没跑成时，什么时候再试
+	retryDay    string
+	retries     int
 
 	wake      chan struct{}
 	manual    chan []string
@@ -59,21 +63,31 @@ func (a *account) warnf(format string, args ...any) { a.e.logf(levelWarn, a.mid,
 func (a *account) snapshot() accountState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	st := a.st
+	return cloneAccountState(a.st)
+}
+
+// update 修改状态并保存
+func (a *account) update(fn func(st *accountState)) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closing {
+		return errNoAccount
+	}
+	st := cloneAccountState(a.st)
+	fn(&st)
+	if err := writeJSON(a.e.stateFile(a.mid), st); err != nil {
+		a.e.Errorf("保存账号 %s 的状态失败：%v", a.mid, err)
+		return err
+	}
+	a.st = st
+	return nil
+}
+
+func cloneAccountState(st accountState) accountState {
 	st.DisabledTasks = slices.Clone(st.DisabledTasks)
 	st.Today = maps.Clone(st.Today)
 	st.Marks = maps.Clone(st.Marks)
 	return st
-}
-
-// update 修改状态并保存
-func (a *account) update(fn func(st *accountState)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	fn(&a.st)
-	if err := writeJSON(a.e.stateFile(a.mid), a.st); err != nil {
-		a.e.Errorf("保存账号 %s 的状态失败：%v", a.mid, err)
-	}
 }
 
 // saveNav 把 nav 返回的资料记到状态里
@@ -101,7 +115,16 @@ func (a *account) poke() {
 }
 
 // close 停下排程循环
-func (a *account) close() { a.closeOnce.Do(func() { close(a.done) }) }
+func (a *account) close() <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.closing = true
+	a.closeOnce.Do(func() { close(a.done) })
+	if a.cancel != nil {
+		a.cancel()
+	}
+	return a.runDone
+}
 
 // cancelRun 中止正在进行的一轮
 func (a *account) cancelRun() bool {
@@ -118,7 +141,7 @@ func (a *account) cancelRun() bool {
 func (a *account) runNow(ids []string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running != nil || a.queued {
+	if a.closing || a.paused || a.e.ctx.Err() != nil || a.running != nil || a.queued {
 		return false
 	}
 	select {
@@ -139,7 +162,10 @@ func dailyTime(set *api.Settings, mid string, date time.Time) time.Time {
 	if set.Jitter > 0 {
 		h := fnv.New32a()
 		h.Write([]byte(mid + t.Format("2006-01-02")))
-		t = t.Add(time.Duration(h.Sum32()%uint32(set.Jitter*60+1)) * time.Second)
+		// 随机推迟只在同一个北京日期内采样，避免午夜后重新排程漏掉前一天。
+		last := time.Date(y, m, d, 23, 59, 59, 0, Beijing)
+		seconds := min(set.Jitter*60, int(last.Sub(t)/time.Second))
+		t = t.Add(time.Duration(h.Sum32()%uint32(seconds+1)) * time.Second)
 	}
 	return t
 }
@@ -150,8 +176,9 @@ func (a *account) nextDue(now time.Time) (when time.Time, ids []string, trigger 
 	set := a.e.Settings()
 	a.mu.Lock()
 	st, retryAt := a.st, a.retryAt
+	stopped := a.closing || a.paused || a.e.ctx.Err() != nil
 	a.mu.Unlock()
-	if !st.Enabled || !st.LoggedIn {
+	if stopped || !st.Enabled || !st.LoggedIn {
 		return time.Time{}, nil, "", false
 	}
 	today := day(now)
@@ -188,7 +215,9 @@ func (a *account) loop() {
 			fire  <-chan time.Time
 		)
 		if ok {
-			timer = time.NewTimer(max(0, when.Sub(a.e.now())))
+			// 至多等一分钟就重新看墙上时钟：手机、电脑睡眠时 Go 的单调时钟可能不走，
+			// 醒来后不能还等着睡前算出的那几个小时
+			timer = time.NewTimer(min(time.Minute, max(0, when.Sub(a.e.now()))))
 			fire = timer.C
 		}
 		var run *api.Run
@@ -203,7 +232,9 @@ func (a *account) loop() {
 			a.queued = false
 			a.mu.Unlock()
 		case <-fire:
-			run, ran = a.execute(a.e.ctx, trigger, ids), true
+			if !a.e.now().Before(when) {
+				run, ran = a.execute(a.e.ctx, trigger, ids), true
+			}
 		}
 		if timer != nil {
 			timer.Stop()
@@ -217,7 +248,7 @@ func (a *account) loop() {
 		}
 		if ran && run == nil {
 			// 别处（RunNow）正在跑这个账号，等一会儿再看
-			a.e.cfg.Sleep(a.e.ctx, 5*time.Second)
+			sleepCtx(a.e.ctx, 5*time.Second)
 		}
 	}
 }
@@ -226,22 +257,27 @@ func (a *account) loop() {
 func (a *account) execute(parent context.Context, trigger string, ids []string) *api.Run {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+	stopEngineCancel := context.AfterFunc(a.e.ctx, cancel)
+	defer stopEngineCancel()
 	started := a.e.now()
 	a.mu.Lock()
-	if a.running != nil {
+	if a.closing || a.paused || a.e.ctx.Err() != nil || a.running != nil {
 		a.mu.Unlock()
 		return nil
 	}
 	a.running = &api.Progress{RunID: runID(started, a.mid), Started: started, Task: "登录检查"}
 	a.cancel = cancel
+	done := make(chan struct{})
+	a.runDone = done
 	a.mu.Unlock()
 
-	run := a.e.runAccount(ctx, a, trigger, ids, started)
-
-	a.mu.Lock()
-	a.running, a.cancel = nil, nil
-	a.mu.Unlock()
-	return run
+	defer func() {
+		a.mu.Lock()
+		a.running, a.cancel, a.runDone = nil, nil, nil
+		close(done)
+		a.mu.Unlock()
+	}()
+	return a.e.runAccount(ctx, a, trigger, ids, started)
 }
 
 // progress 更新正在进行的一轮的进度

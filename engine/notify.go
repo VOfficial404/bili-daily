@@ -106,11 +106,17 @@ func (e *Engine) push(ctx context.Context, n api.Notify, title, text string) err
 		if r.Description != "" && !r.OK {
 			return fmt.Errorf("Telegram：%s", r.Description)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		if !r.OK {
+			return fmt.Errorf("Telegram：响应缺少成功确认")
+		}
+		return nil
 
 	case "pushplus":
 		var r struct {
-			Code int    `json:"code"`
+			Code *int   `json:"code"`
 			Msg  string `json:"msg"`
 		}
 		if err := postJSON(ctx, hc, "https://www.pushplus.plus/send", map[string]any{
@@ -118,8 +124,11 @@ func (e *Engine) push(ctx context.Context, n api.Notify, title, text string) err
 		}, &r); err != nil {
 			return err
 		}
-		if r.Code != 200 {
-			return fmt.Errorf("PushPlus：%d %s", r.Code, r.Msg)
+		if r.Code == nil {
+			return fmt.Errorf("PushPlus：响应缺少 code")
+		}
+		if *r.Code != 200 {
+			return fmt.Errorf("PushPlus：%d %s", *r.Code, r.Msg)
 		}
 		return nil
 
@@ -146,7 +155,7 @@ func (e *Engine) push(ctx context.Context, n api.Notify, title, text string) err
 
 	case "serverchan":
 		var r struct {
-			Code    int    `json:"code"`
+			Code    *int   `json:"code"`
 			Message string `json:"message"`
 		}
 		// Server 酱按 Markdown 显示，两个换行才是换行
@@ -159,8 +168,11 @@ func (e *Engine) push(ctx context.Context, n api.Notify, title, text string) err
 		if err := doPush(hc, req, &r); err != nil {
 			return err
 		}
-		if r.Code != 0 {
-			return fmt.Errorf("Server 酱：%d %s", r.Code, r.Message)
+		if r.Code == nil {
+			return fmt.Errorf("Server 酱：响应缺少 code")
+		}
+		if *r.Code != 0 {
+			return fmt.Errorf("Server 酱：%d %s", *r.Code, r.Message)
 		}
 		return nil
 
@@ -170,14 +182,17 @@ func (e *Engine) push(ctx context.Context, n api.Notify, title, text string) err
 			host = "https://api.day.app"
 		}
 		var r struct {
-			Code    int    `json:"code"`
+			Code    *int   `json:"code"`
 			Message string `json:"message"`
 		}
 		if err := postJSON(ctx, hc, host+"/"+url.PathEscape(n.Token), map[string]any{"title": title, "body": text, "group": "bili-tools"}, &r); err != nil {
 			return err
 		}
-		if r.Code != 200 {
-			return fmt.Errorf("Bark：%d %s", r.Code, r.Message)
+		if r.Code == nil {
+			return fmt.Errorf("Bark：响应缺少 code")
+		}
+		if *r.Code != 200 {
+			return fmt.Errorf("Bark：%d %s", *r.Code, r.Message)
 		}
 		return nil
 
@@ -205,14 +220,17 @@ func tokenLabel(channel string) string {
 // postBot 发给企业微信或钉钉的群机器人，两家的格式一样
 func postBot(ctx context.Context, hc *http.Client, name, u, text string) error {
 	var r struct {
-		ErrCode int    `json:"errcode"`
+		ErrCode *int   `json:"errcode"`
 		ErrMsg  string `json:"errmsg"`
 	}
 	if err := postJSON(ctx, hc, u, map[string]any{"msgtype": "text", "text": map[string]string{"content": text}}, &r); err != nil {
 		return err
 	}
-	if r.ErrCode != 0 {
-		return fmt.Errorf("%s：%d %s", name, r.ErrCode, r.ErrMsg)
+	if r.ErrCode == nil {
+		return fmt.Errorf("%s：响应缺少 errcode", name)
+	}
+	if *r.ErrCode != 0 {
+		return fmt.Errorf("%s：%d %s", name, *r.ErrCode, r.ErrMsg)
 	}
 	return nil
 }
@@ -240,9 +258,14 @@ func doPush(hc *http.Client, req *http.Request, out any) error {
 		return fmt.Errorf("连不上推送服务：%v", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("读取推送响应失败：%w", err)
+	}
 	if out != nil {
-		json.Unmarshal(body, out)
+		if err := json.Unmarshal(body, out); err != nil {
+			return fmt.Errorf("解析推送响应失败：%w", err)
+		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("推送服务返回 HTTP %d", resp.StatusCode)

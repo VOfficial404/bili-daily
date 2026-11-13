@@ -1,0 +1,8 @@
+{
+  "name": "Bili Tools",
+  "slug": "bili-tools-desktop",
+  "identifier": "io.github.vofficial404.bilitools",
+  "version": "0.1.0",
+  "copyright": "© 2026 VOfficial404",
+  "out": "build"
+}

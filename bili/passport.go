@@ -213,7 +213,7 @@ func (c *Client) CookieNeedsRefresh(ctx context.Context) (bool, int64, error) {
 	return d.Refresh, d.Timestamp, err
 }
 
-// RefreshCookie 换一份新的 Cookie。成功后 c 改用新 Cookie，旧 Cookie 已经在 B 站作废。
+// RefreshCookie 换一份新的 Cookie 并安装到 c。调用方必须先保存新会话，再调用 ConfirmRefresh。
 func (c *Client) RefreshCookie(ctx context.Context, refreshToken string, ts int64) (*Session, error) {
 	if ts == 0 {
 		ts = time.Now().UnixMilli()
@@ -264,7 +264,10 @@ func (c *Client) RefreshCookie(ctx context.Context, refreshToken string, ts int6
 		c.cookies[k] = v
 	}
 	c.mu.Unlock()
-	// 旧 Cookie 在确认之后才失效；确认失败不影响新 Cookie 使用，所以不当作错误
-	c.PostForm(ctx, "https://passport.bilibili.com/x/passport-login/web/confirm/refresh", url.Values{"refresh_token": {refreshToken}}, nil)
 	return s, nil
+}
+
+// ConfirmRefresh 用新 Cookie 和旧 refresh_token 作废旧会话；调用前必须持久化新会话。
+func (c *Client) ConfirmRefresh(ctx context.Context, oldToken string) error {
+	return c.PostForm(ctx, "https://passport.bilibili.com/x/passport-login/web/confirm/refresh", url.Values{"refresh_token": {oldToken}}, nil)
 }

@@ -51,6 +51,8 @@ type Engine struct {
 	token string
 
 	mu         sync.Mutex
+	settingsMu sync.Mutex // 包括部分 PUT 的读取、保存与应用
+	loginMu    sync.Mutex // 串行化扫码会话提交和新账号注册
 	set        api.Settings
 	accounts   map[string]*account
 	egress     *api.Egress
@@ -153,7 +155,7 @@ func day(t time.Time) string { return t.In(Beijing).Format("2006-01-02") }
 func (e *Engine) Settings() api.Settings {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.set
+	return cloneSettings(e.set)
 }
 
 // Start 开始排程：每个账号按每日计划运行，定时查询出口 IP
@@ -242,7 +244,8 @@ func (e *Engine) accountLoggedIn(mid string) {
 
 // rescanLoop 每分钟看一次数据目录：命令行 login 新加的账号会被接上
 func (e *Engine) rescanLoop() {
-	for e.cfg.Sleep(e.ctx, time.Minute) == nil {
+	// 这里是真的等一分钟，不走 cfg.Sleep：测试里 Sleep 不等待，循环会空转
+	for sleepCtx(e.ctx, time.Minute) == nil {
 		for _, mid := range e.listAccounts() {
 			if e.account(mid) == nil {
 				e.Infof("发现新账号 UID %s", mid)
@@ -258,23 +261,46 @@ func (e *Engine) removeAccount(ctx context.Context, mid string) error {
 	if a == nil {
 		return errNoAccount
 	}
-	a.cancelRun()
-	name := a.name()
-	if c, err := e.accountClient(mid); err == nil {
-		c.Wait = nil
-		if err := c.Logout(ctx); err != nil {
-			a.warnf("B 站注销会话失败（本地会话仍会删除）：%v", err)
+	// 先关准入和排程，再等当前运行全部落盘；请求取消后清理仍会完成。
+	done := a.close()
+	result := make(chan error, 1)
+	go func() {
+		a.lifecycleMu.Lock()
+		defer a.lifecycleMu.Unlock()
+		if done != nil {
+			<-done
 		}
-	}
-	e.mu.Lock()
-	delete(e.accounts, mid)
-	e.mu.Unlock()
-	a.close()
-	if err := os.RemoveAll(e.accountDir(mid)); err != nil {
+		name := a.name()
+		if c, err := e.accountClient(mid); err == nil {
+			c.Wait = nil
+			if err := c.Logout(ctx); err != nil {
+				a.warnf("B 站注销会话失败（本地会话仍会删除）：%v", err)
+			}
+		}
+		if err := os.RemoveAll(e.accountDir(mid)); err != nil {
+			result <- err
+			return
+		}
+		e.mu.Lock()
+		delete(e.accounts, mid)
+		e.mu.Unlock()
+		e.Infof("已移除账号 %s", name)
+		result <- nil
+	}()
+	select {
+	case err := <-result:
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	e.Infof("已移除账号 %s", name)
-	return nil
+}
+
+// Wake 让所有账号重新看一次排程。手机 App 回到前台时调用：
+// 手机睡眠期间错过的那一轮立即补上，不用等计时器。
+func (e *Engine) Wake() {
+	for _, a := range e.accountList() {
+		a.poke()
+	}
 }
 
 // RunAll 让所有参加每日计划的空闲账号立即跑一轮，返回实际触发的数量
@@ -293,6 +319,11 @@ func (e *Engine) RunNow(ctx context.Context, mid string, ids []string) (*api.Run
 	a := e.account(mid)
 	if a == nil {
 		return nil, errNoAccount
+	}
+	for _, id := range ids {
+		if _, ok := registry[id]; !ok {
+			return nil, fmt.Errorf("没有这个任务：%s", id)
+		}
 	}
 	run := a.execute(ctx, "manual", ids)
 	if run == nil {

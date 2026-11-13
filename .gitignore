@@ -1,0 +1,8 @@
+data/
+*.exe
+/bili-tools
+build/
+dist/
+.mygo/
+.nsgo/
+*.tmp

@@ -145,7 +145,7 @@ type Notify struct {
 	When     string `json:"when"`     // never、failed（有失败时）、always
 	Channel  string `json:"channel"`  // telegram、pushplus、wecom、dingtalk、serverchan、bark、webhook
 	Token    string `json:"token"`    // 各渠道的密钥、机器人 token 或 webhook 地址
-	Target   string `json:"target"`   // Telegram 的 chat_id；其他渠道不用
+	Target   string `json:"target"`   // Telegram 的 chat_id；钉钉的加签密钥（没开加签时留空）；其他渠道不用
 	Endpoint string `json:"endpoint"` // 自建服务的地址（Telegram 反代、Bark 服务器），空表示官方
 }
 

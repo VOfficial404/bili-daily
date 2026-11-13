@@ -12,36 +12,6 @@ import (
 	"time"
 )
 
-/* App 签名：参数按键排序后接上 appsec 取 MD5 */
-
-// TV 端的 appkey：扫码授权拿到的 access_key 属于它，之后的 App 接口也用它签名
-const (
-	appKey = "4409e2ce8ffd12b8"
-	appSec = "59b43e04ad6965f34319062b478f83dd"
-)
-
-// appSign 给参数加上 access_key（有的话）、appkey、ts 和 sign，返回编码好的查询串
-func (c *Client) appSign(v url.Values) string {
-	out := url.Values{}
-	for k, vs := range v {
-		out[k] = vs
-	}
-	if ak := c.AccessKey(); ak != "" && out.Get("access_key") == "" {
-		out.Set("access_key", ak)
-	}
-	return signApp(out, time.Now())
-}
-
-func signApp(v url.Values, now time.Time) string {
-	v.Set("appkey", appKey)
-	if v.Get("ts") == "" {
-		v.Set("ts", strconv.FormatInt(now.Unix(), 10))
-	}
-	q := v.Encode() // Encode 按键排序
-	sum := md5.Sum([]byte(q + appSec))
-	return q + "&sign=" + hex.EncodeToString(sum[:])
-}
-
 /* WBI 签名：见 bilibili-API-collect 的 docs/misc/sign/wbi.md */
 
 var wbiMixin = [64]int{
@@ -128,4 +98,14 @@ func wbiSign(v url.Values, mixin string, now time.Time) string {
 	q := strings.ReplaceAll(out.Encode(), "+", "%20")
 	sum := md5.Sum([]byte(q + mixin))
 	return q + "&w_rid=" + hex.EncodeToString(sum[:])
+}
+
+// SignWBI 给表单参数加上 wts 和 w_rid，返回签过名的参数。
+// 地址里的参数用 Request.WBI；正文里的参数（直播心跳）用它。
+func (c *Client) SignWBI(ctx context.Context, form url.Values) (url.Values, error) {
+	keys, err := c.wbiKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return url.ParseQuery(wbiSign(form, keys, time.Now()))
 }

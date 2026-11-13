@@ -18,10 +18,7 @@ import (
 
 const (
 	// WebUA 是网页接口用的浏览器标识
-	WebUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-	// AppUA 是 App 接口用的标识
-	AppUA = "Mozilla/5.0 BiliDroid/8.20.0 (bbcallen@gmail.com) os/android model/23127PN0CC mobi_app/android build/8200300 channel/bili innerVer/8200310 osVer/14 network/2"
-
+	WebUA   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 	maxBody = 8 << 20
 )
 
@@ -29,10 +26,9 @@ const (
 type Client struct {
 	hc *http.Client
 
-	mu        sync.Mutex
-	cookies   map[string]string
-	accessKey string
-	wbi       wbiKeys
+	mu      sync.Mutex
+	cookies map[string]string
+	wbi     wbiKeys
 
 	// Wait 在每个请求发出前调用，engine 用它控制请求之间的间隔；返回错误时不发请求
 	Wait func(ctx context.Context) error
@@ -83,19 +79,6 @@ func (c *Client) CSRF() string { return c.Cookie("bili_jct") }
 // Mid 是账号的 UID
 func (c *Client) Mid() string { return c.Cookie("DedeUserID") }
 
-// AccessKey 是 App 授权，没有时为空
-func (c *Client) AccessKey() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.accessKey
-}
-
-func (c *Client) SetAccessKey(k string) {
-	c.mu.Lock()
-	c.accessKey = k
-	c.mu.Unlock()
-}
-
 // Request 描述一次接口调用。Form 和 JSON 二选一。
 type Request struct {
 	Method string // 空表示 GET；有 Form 或 JSON 时默认 POST
@@ -105,9 +88,8 @@ type Request struct {
 	JSON   any
 	Header map[string]string // 覆盖默认请求头（User-Agent、Referer 等）
 
-	WBI     bool // 给 Query 加 WBI 签名
-	AppSign bool // 给 Query（GET）或 Form（POST）加上 access_key 和 App 签名
-	NoCSRF  bool // 不自动往 Form 里补 csrf
+	WBI    bool // 给 Query 加 WBI 签名
+	NoCSRF bool // 不自动往 Form 里补 csrf
 }
 
 // envelope 是 B 站接口的通用外壳。直播和漫画接口用 msg，其他用 message。
@@ -284,14 +266,10 @@ func (c *Client) build(ctx context.Context, r Request) (*http.Request, error) {
 		for k, vs := range r.Form {
 			form[k] = vs
 		}
-		if csrf := c.CSRF(); !r.NoCSRF && !r.AppSign && csrf != "" && form.Get("csrf") == "" {
+		if csrf := c.CSRF(); !r.NoCSRF && csrf != "" && form.Get("csrf") == "" {
 			form.Set("csrf", csrf)
 		}
-		enc := form.Encode()
-		if r.AppSign {
-			enc = c.appSign(form)
-		}
-		rd, ctype = strings.NewReader(enc), "application/x-www-form-urlencoded"
+		rd, ctype = strings.NewReader(form.Encode()), "application/x-www-form-urlencoded"
 		if method == "" {
 			method = http.MethodPost
 		}
@@ -299,16 +277,13 @@ func (c *Client) build(ctx context.Context, r Request) (*http.Request, error) {
 	if method == "" {
 		method = http.MethodGet
 	}
-	switch {
-	case r.WBI:
+	if r.WBI {
 		keys, err := c.wbiKeys(ctx)
 		if err != nil {
 			return nil, err
 		}
 		u.RawQuery = wbiSign(query, keys, time.Now())
-	case r.AppSign && r.Form == nil:
-		u.RawQuery = c.appSign(query)
-	default:
+	} else {
 		u.RawQuery = query.Encode()
 	}
 
@@ -323,10 +298,6 @@ func (c *Client) build(ctx context.Context, r Request) (*http.Request, error) {
 	req.Header.Set("Referer", "https://www.bilibili.com/")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-	if r.AppSign {
-		req.Header.Set("User-Agent", AppUA)
-		req.Header.Del("Referer")
-	}
 	for k, v := range r.Header {
 		if v == "" {
 			req.Header.Del(k)

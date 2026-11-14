@@ -127,6 +127,7 @@ func (a *app) settingsUIDs(c *ui.Context, label string, value *[]int64) {
 			}
 		}
 	}).Description("用空格或逗号分隔，留空自动选择。").Error(func() string { _, err := settingsIDs(s); return err }())
+	a.settingsUPPreviews(c, "daily", s)
 }
 
 func (a *app) settingsWords(c *ui.Context, label string, value *[]string, hint string) {
@@ -258,6 +259,9 @@ func (a *app) settingsTaskOptions(c *ui.Context, id string) {
 	case "charge":
 		d := &t.Charge
 		a.settingsNumber64(c, "充电对象 UID", &d.UpID, "会消耗 B 币券，启用前请确认对象。")
+		if mid, err := strconv.ParseInt(strings.TrimSpace(a.settingsRaw("整数:充电对象 UID", strconv.FormatInt(d.UpID, 10))), 10, 64); err == nil && mid > 0 {
+			a.settingsUPPreviews(c, "charge", strconv.FormatInt(mid, 10))
+		}
 		a.settingsNumber(c, "每月充电日期", &d.Day, "1～28 号，从这一天开始尝试充电。")
 		a.settingsText(c, "charge-comment", "充电留言", &d.Comment, "留空不留言。")
 	case "manga":
@@ -332,8 +336,9 @@ func (a *app) settingsView(c *ui.Context) {
 			})
 		})
 		panel(c).Padding(20).Gap(12).Children(func() {
-			ui.Text(c, "日志").FontSize(17).Bold()
+			ui.Text(c, "报告与日志").FontSize(17).Bold()
 			ui.Form(c, func() {
+				a.settingsNumber(c, "报告保留天数", &a.form.ReportRetentionDays, "保留最近 "+strconv.Itoa(a.form.ReportRetentionDays)+" 天的报告（1～365 天），每个账号最多保留 60 份。")
 				a.settingsChoice(c, "log-level", "日志级别", &a.form.LogLevel, []string{"debug", "info", "warn", "error"}, []string{"调试", "信息", "警告", "错误"}, "排查问题时改成「调试」。")
 			})
 		})

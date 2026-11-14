@@ -16,9 +16,13 @@ func (a *app) needsChargeConfirm() bool {
 	if a.chargeConfirmed || !client.NeedsChargeConfirm(a.formBase, a.form) {
 		return false
 	}
+	recipient := fmt.Sprintf("UID %d", f.UpID)
+	if preview := a.upProfiles[fmt.Sprint(f.UpID)]; preview != nil && preview.err == "" && preview.profile.Uname != "" {
+		recipient = preview.profile.Uname + "（" + recipient + "）"
+	}
 	a.guardOpen = true
 	a.guardTitle = "确认 B 币券充电？"
-	a.guardText = fmt.Sprintf("保存之后，每月 %d 号起会把每个账号里的全部整数 B 币券充给 UID %d。充进去的 B 币拿不回来，先确认这个 UID 是你想支持的 UP 主。", f.Day, f.UpID)
+	a.guardText = fmt.Sprintf("保存之后，每月 %d 号起会把每个账号里的全部整数 B 币券充给 %s。充进去的 B 币拿不回来，先确认这个 UID 是你想支持的 UP 主。", f.Day, recipient)
 	a.guardOK = "确认并保存"
 	a.guardAction = func() {
 		a.chargeConfirmed = true

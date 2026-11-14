@@ -127,6 +127,7 @@ func (c *Client) VIPPointSign(ctx context.Context, now time.Time) error {
 // 大积分任务的状态
 const (
 	VIPPointUnreceived = 0 // 还没领取任务
+	VIPPointReceived   = 1 // 已领取，尚未完成
 	VIPPointDone       = 3
 )
 
@@ -177,22 +178,25 @@ func (c *Client) VIPPoints(ctx context.Context, now time.Time) (*VIPPoints, erro
 
 // VIPPointReceive 领取一个大积分任务，之后才能完成它
 func (c *Client) VIPPointReceive(ctx context.Context, code string) error {
+	form := vipPointParams(time.Now())
+	form.Set("taskCode", code)
 	return c.Do(ctx, Request{
 		URL:    "https://api.bilibili.com/pgc/activity/score/task/receive/v2",
-		Form:   url.Values{"taskCode": {code}},
+		Form:   form,
 		Header: vipTaskHeader,
 	}, nil)
 }
 
 // VIPPointComplete 报告一个大积分任务做完了。每种任务报告的接口不一样；
 // 接口返回成功不等于 B 站记了完成，要再看一次 VIPPoints。
+// 观看正片需要官方 App 的真实播放流程，这里不支持报告它的完成。
 func (c *Client) VIPPointComplete(ctx context.Context, code string, now time.Time) error {
 	r := Request{Header: vipTaskHeader}
 	switch code {
 	case "bonus", "privilege":
 		r.URL = "https://api.bilibili.com/pgc/activity/score/task/complete"
 		r.JSON = map[string]string{"taskCode": code}
-	case "dress-view", "ogvwatchnew":
+	case "dress-view":
 		r.URL = "https://api.bilibili.com/pgc/activity/score/task/complete/v2"
 		r.Form = url.Values{"taskCode": {code}}
 	case "vipmallview":

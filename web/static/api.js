@@ -78,6 +78,7 @@ export const api = {
   testNotify: (n) => call("POST", "/api/notify/test", n),
   testProxy: (proxy) => call("POST", "/api/proxy/test", { proxy }),
   logs: (params) => call("GET", "/api/logs" + q(params || {})),
+  upProfile: (m) => call("GET", `/api/ups/${mid(m)}`),
 };
 
 // mergeSettings 把表单里改过的项（edited 相对 base 的差别）放到最新的设置 latest 上，

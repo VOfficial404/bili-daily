@@ -17,11 +17,12 @@ import (
 // 会花钱、会关注别人、会在别人直播间留言的任务默认关着。
 func DefaultSettings() api.Settings {
 	return api.Settings{
-		RunAt:    "09:30",
-		Jitter:   60,
-		Pace:     "normal",
-		LogLevel: "info",
-		Notify:   api.Notify{When: "failed"},
+		RunAt:               "09:30",
+		Jitter:              60,
+		Pace:                "normal",
+		LogLevel:            "info",
+		Notify:              api.Notify{When: "failed"},
+		ReportRetentionDays: 30,
 		Tasks: api.TaskSettings{
 			Daily: api.DailyOptions{
 				Enabled:     true,
@@ -75,6 +76,9 @@ func checkSettings(s *api.Settings) error {
 	}
 	if !validLevel(s.LogLevel) {
 		return errors.New("日志级别只能是 debug、info、warn 或 error")
+	}
+	if s.ReportRetentionDays < 1 || s.ReportRetentionDays > 365 {
+		return errors.New("运行报告保留天数要在 1 到 365 天之间")
 	}
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	if _, err := ParseProxy(s.Proxy); err != nil {
@@ -223,6 +227,9 @@ func (e *Engine) updateSettings(s api.Settings) (api.Settings, error) {
 		case e.egressKick <- struct{}{}:
 		default:
 		}
+	}
+	if s.ReportRetentionDays < old.ReportRetentionDays {
+		e.pruneReports()
 	}
 	// 开始时间、任务开关可能变了，让每个账号重新算下一次运行
 	for _, a := range e.accountList() {

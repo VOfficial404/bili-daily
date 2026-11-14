@@ -1,4 +1,4 @@
-// 设置：运行计划、代理、结果推送、日志级别和服务端信息。
+// 设置：运行计划、代理、结果推送、日志级别、报告保留天数和服务端信息。
 
 import { api } from "./api.js";
 import { h, mount, when } from "./dom.js";
@@ -101,9 +101,10 @@ export function render(app) {
         h("div.inline-actions", null, testNotify, notifyResult),
       ),
       h("section.panel", null,
-        h("h2.section-title", null, "日志"),
+        h("h2.section-title", null, "日志和报告"),
         h("div.form-grid", null,
           select(form, ["log_level"], "记录到哪一级", [["debug", "调试"], ["info", "信息"], ["warn", "警告"], ["error", "错误"]], "排查问题时改成「调试」。"),
+          number(form, ["report_retention_days"], "报告保留几天", "1～365 天，更早的报告自动删掉。每个账号最多留最近 60 份。", { min: 1, max: 365 }),
         ),
       ),
       h("section.panel", null,

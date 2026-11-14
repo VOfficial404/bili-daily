@@ -4,6 +4,8 @@
 
 **API-collect availability:** the requested [SocialSisterYi repository](https://github.com/SocialSisterYi/bilibili-API-collect) redirects to a repository whose documentation was deleted. API-collect facts below were recovered from its [published documentation mirror](https://goooler.github.io/bilibili-API-collect/) and [preserved source fork](https://github.com/bilibili-plugins/bilibili-api-collect). These are explicitly distinguished from BiliBiliToolPro behavior.
 
+**bili-daily implementation update:** receipt now carries the existing `vipPointParams` metadata, including `build`; [upstream issue #1195](https://github.com/RayWangQvQ/BiliBiliToolPro/issues/1195) reports missing build causing `6007000`. This is a community observation, not an official compatibility guarantee. OGV receipt is tracked separately from playback: successful receipt is followed by a manual-watch instruction, never a generic completion request or a claim of 40 points. The captured signing recipe below is historical; newer reports differ, and it is not implemented here. Privilege and voucher-charge tasks gate on active annual membership; monthly VIP scoring and manga benefits remain available.
+
 ## Shared authentication, headers, and eligibility
 
 1. Every target task first checks its section’s `IsEnable`, sets account cookies, and calls **GET `https://api.bilibili.com/x/web-interface/nav`**.

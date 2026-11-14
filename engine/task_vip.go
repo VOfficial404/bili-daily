@@ -14,7 +14,7 @@ func init() {
 		Info: api.TaskInfo{
 			ID:    TaskVipPoint,
 			Title: "大会员大积分",
-			Desc:  "每天签到，做完不用花钱的大积分任务，领大会员每天的 10 点经验。",
+			Desc:  "每天签到，完成支持的大积分任务；领取正片任务后需在官方 App 观看，另领每日经验。",
 			Group: "大会员",
 			Needs: "大会员",
 		},
@@ -25,9 +25,9 @@ func init() {
 		Info: api.TaskInfo{
 			ID:    TaskVipPrivilege,
 			Title: "大会员权益",
-			Desc:  "领大会员每月送的 B 币券和各种优惠券。",
+			Desc:  "领年度大会员每月送的 B 币券和各种优惠券。",
 			Group: "大会员",
-			Needs: "大会员",
+			Needs: "年度大会员",
 		},
 		Enabled: func(s *api.Settings) bool { return s.Tasks.VipPrivilege.Enabled },
 		Run:     runVipPrivilege,
@@ -38,7 +38,7 @@ func init() {
 			Title: "B 币券充电",
 			Desc:  "每月把 B 币券充给指定的 UP 主，免得月底过期。",
 			Group: "大会员",
-			Needs: "B 币券",
+			Needs: "年度大会员、B 币券",
 		},
 		Enabled: func(s *api.Settings) bool { return s.Tasks.Charge.Enabled },
 		Run:     runCharge,
@@ -51,8 +51,8 @@ func init() {
 var vipPrivilegeNames = [...]string{1: "B 币券", "会员购优惠券", "漫画福利券", "会员购包邮券", "漫画商城优惠券", "装扮体验卡", "课堂优惠券"}
 
 func runVipPrivilege(x *Ctx) {
-	if x.Nav.VIP() == bili.VIPNone {
-		x.Skip("领取权益", "不是大会员")
+	if x.Nav.VIP() != bili.VIPAnnual {
+		x.Skip("领取权益", "需要在期年度大会员")
 		return
 	}
 	items, err := x.C.VIPPrivileges(x)
@@ -101,6 +101,10 @@ func runVipPrivilege(x *Ctx) {
 /* B 币券充电 */
 
 func runCharge(x *Ctx) {
+	if x.Nav.VIP() != bili.VIPAnnual {
+		x.Skip("充电", "需要在期年度大会员")
+		return
+	}
 	opt := x.Set.Tasks.Charge
 	if opt.UpID == 0 {
 		x.Skip("充电", "还没有设置给谁充电")
@@ -119,6 +123,10 @@ func runCharge(x *Ctx) {
 	nav, err := x.C.Nav(x)
 	if err != nil {
 		x.Fail("查询 B 币券", err)
+		return
+	}
+	if nav.VIP() != bili.VIPAnnual {
+		x.Skip("充电", "年度大会员已失效，跳过充电")
 		return
 	}
 	amount := int(nav.Wallet.Coupon)
@@ -157,7 +165,7 @@ func runCharge(x *Ctx) {
 
 /* 大积分 */
 
-// vipPointTasks 是不用花钱、可以自动做的大积分任务，按这个顺序做。
+// vipPointTasks 是不用花钱的大积分任务，按这个顺序处理；观看正片只领取，需用户在官方 App 播放。
 // 要购买才能完成的（vipmallbuy、tvodbuy、dressbuyamount）不在里面，连领取都不领。
 var vipPointTasks = [...]struct{ code, name string }{
 	{"bonus", "大会员福利"},
@@ -169,10 +177,10 @@ var vipPointTasks = [...]struct{ code, name string }{
 	{"ogvwatchnew", "观看正片"},
 }
 
-// 「观看正片」要在手机 App 里连续看 10 分钟，这里只能试着直接报告完成，B 站不一定认
+// 「观看正片」只领取任务，不自动播放，也不提交完成；领取不计入已完成任务。
 const (
 	vipPointWatch     = "ogvwatchnew"
-	vipPointWatchHelp = "要在手机 App 里连续看 10 分钟正片，自动完成不了"
+	vipPointWatchHelp = "任务已领取，需要在B站官方App连续观看10分钟正片；本工具未自动播放"
 )
 
 func runVipPoint(x *Ctx) {
@@ -225,6 +233,10 @@ func vipPointDoTasks(x *Ctx) (done, point int, ok bool) {
 			x.Skip(t.name, "已完成")
 			continue
 		}
+		if t.code == vipPointWatch && state != bili.VIPPointUnreceived && state != bili.VIPPointReceived {
+			x.Skip(t.name, "B 站尚未标记任务完成（状态 %d）；请在官方 App 查看并观看正片，本工具未自动播放", state)
+			continue
+		}
 		if state == bili.VIPPointUnreceived {
 			if err := x.C.VIPPointReceive(x, t.code); err != nil {
 				x.Fail(t.name, err)
@@ -234,6 +246,10 @@ func vipPointDoTasks(x *Ctx) (done, point int, ok bool) {
 				continue
 			}
 		}
+		if t.code == vipPointWatch {
+			x.Skip(t.name, vipPointWatchHelp)
+			continue
+		}
 		if t.code == "animatetab" || t.code == "filmtab" {
 			// 这两个任务要求在频道页停留 10 秒
 			if !x.Sleep(10 * time.Second) {
@@ -242,11 +258,6 @@ func vipPointDoTasks(x *Ctx) (done, point int, ok bool) {
 			}
 		}
 		if err := x.C.VIPPointComplete(x, t.code, x.Now()); err != nil {
-			if t.code == vipPointWatch && !bili.IsNotLogin(err) && x.Err() == nil {
-				x.Debugf("观看正片直接报告完成被拒绝：%v", err)
-				x.Skip(t.name, vipPointWatchHelp)
-				continue
-			}
 			x.Fail(t.name, err)
 			if x.Aborted() {
 				return 0, 0, false
@@ -269,8 +280,6 @@ func vipPointDoTasks(x *Ctx) (done, point int, ok bool) {
 		case states[t.code] == bili.VIPPointDone:
 			x.OK(t.name, "已完成")
 			done++
-		case t.code == vipPointWatch:
-			x.Skip(t.name, vipPointWatchHelp)
 		default:
 			x.Failf(t.name, bili.ReasonChanged, "报告了完成，但 B 站没有记为完成")
 		}

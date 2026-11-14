@@ -41,6 +41,13 @@ type Egress struct {
 	Error     string    `json:"error,omitempty"`
 }
 
+// UPProfile 是设置中用于核对投币、充电对象的公开资料。
+type UPProfile struct {
+	Mid   string `json:"mid"`
+	Uname string `json:"uname"`
+	Face  string `json:"face"`
+}
+
 // TaskInfo 描述一个任务，界面按它列出任务
 type TaskInfo struct {
 	ID     string `json:"id"`
@@ -131,13 +138,14 @@ type Step struct {
 /* 设置 */
 
 type Settings struct {
-	RunAt    string       `json:"run_at"`    // 每天开始运行的时间，北京时间，HH:MM
-	Jitter   int          `json:"jitter"`    // 在 RunAt 之后随机推迟 0~Jitter 分钟，每个账号每天不同
-	Pace     string       `json:"pace"`      // 请求节奏：slow、normal、fast
-	Proxy    string       `json:"proxy"`     // 所有 B 站请求经过的代理，空表示直连
-	LogLevel string       `json:"log_level"` // debug、info、warn、error
-	Notify   Notify       `json:"notify"`
-	Tasks    TaskSettings `json:"tasks"`
+	RunAt               string       `json:"run_at"`                // 每天开始运行的时间，北京时间，HH:MM
+	Jitter              int          `json:"jitter"`                // 在 RunAt 之后随机推迟 0~Jitter 分钟，每个账号每天不同
+	Pace                string       `json:"pace"`                  // 请求节奏：slow、normal、fast
+	Proxy               string       `json:"proxy"`                 // 所有 B 站请求经过的代理，空表示直连
+	LogLevel            string       `json:"log_level"`             // debug、info、warn、error
+	ReportRetentionDays int          `json:"report_retention_days"` // 报告保留天数，1～365；另有每账号最多 60 份的上限
+	Notify              Notify       `json:"notify"`
+	Tasks               TaskSettings `json:"tasks"`
 }
 
 // Notify 是运行结果推送

@@ -29,6 +29,7 @@ func (e *Engine) Handler() http.Handler {
 	}
 	mux.HandleFunc("GET /api/ping", e.handlePing)
 	mux.HandleFunc("GET /api/state", e.auth(e.handleState))
+	mux.HandleFunc("GET /api/ups/{mid}", e.auth(e.handleUPProfile))
 	mux.HandleFunc("POST /api/qr", e.auth(e.handleQRStart))
 	mux.HandleFunc("GET /api/qr/{id}", e.auth(e.handleQRPoll))
 	mux.HandleFunc("POST /api/run", e.auth(e.handleRunAll))

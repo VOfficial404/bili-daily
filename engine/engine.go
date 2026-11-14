@@ -54,6 +54,7 @@ type Engine struct {
 	mu         sync.Mutex
 	settingsMu sync.Mutex // 包括部分 PUT 的读取、保存与应用
 	loginMu    sync.Mutex // 串行化扫码会话提交和新账号注册
+	runsMu     sync.Mutex // 串行化运行报告保存、清理和对应的 LastRun 更新
 	set        api.Settings
 	accounts   map[string]*account
 	egress     *api.Egress
@@ -102,6 +103,7 @@ func New(cfg Config) (*Engine, error) {
 	for _, mid := range e.listAccounts() {
 		e.accounts[mid] = e.newAccount(mid)
 	}
+	e.pruneReports()
 	return e, nil
 }
 
@@ -173,7 +175,7 @@ func (e *Engine) Start() {
 	for _, a := range e.accounts {
 		accs = append(accs, a)
 	}
-	e.workers.Add(len(accs) + 2)
+	e.workers.Add(len(accs) + 3)
 	e.mu.Unlock()
 
 	s := e.Settings()
@@ -192,6 +194,7 @@ func (e *Engine) Start() {
 	}
 	go func() { defer e.workers.Done(); e.egressLoop() }()
 	go func() { defer e.workers.Done(); e.rescanLoop() }()
+	go func() { defer e.workers.Done(); e.reportRetentionLoop() }()
 }
 
 // Stop 中止正在进行的运行，关闭接口，并等待后台循环和运行报告保存完毕。可以重复或并发调用。

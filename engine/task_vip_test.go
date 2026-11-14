@@ -23,19 +23,34 @@ const (
 	vipPointSignedPath     = "api.bilibili.com/x/vip/vip_center/sign_in/three_days_sign"
 )
 
-func TestVipPrivilegeNonVIP(t *testing.T) {
-	v := newEnv(t)
-	v.login(42)
-	r := v.runTask(42, TaskVipPrivilege)
-	if r.Status != api.StatusSkipped || v.b.Count(vipPrivilegePath) != 0 {
-		t.Fatalf("%+v", r)
+func TestVipPrivilegeRequiresActiveAnnualBeforeQuery(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		vipType   int
+		vipStatus int
+	}{
+		{"非会员", 0, 0},
+		{"月度会员", 1, 1},
+		{"过期年度会员", 2, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := newEnv(t)
+			v.login(42)
+			n := navData(42)
+			n["vipType"], n["vipStatus"] = tc.vipType, tc.vipStatus
+			v.b.JSON(navPath, n)
+			r := v.runTask(42, TaskVipPrivilege)
+			if r.Status != api.StatusSkipped || v.b.Count(vipPrivilegePath) != 0 || v.b.Count(vipReceivePath) != 0 {
+				t.Fatalf("%+v", r)
+			}
+		})
 	}
 }
 
 func TestVipPrivilegeClaimsOnlyAvailableAndContinuesAfterRisk(t *testing.T) {
 	v := newEnv(t)
 	v.login(42)
-	v.vip(42, 1, 0)
+	v.vip(42, 2, 0)
 	v.b.JSON(vipPrivilegePath, map[string]any{"list": []map[string]int{{"type": 1, "state": 0}, {"type": 2, "state": 1}, {"type": 3, "state": 2}, {"type": 4, "state": 0}, {"type": 5, "state": 0}, {"type": 6, "state": 0}, {"type": 9, "state": 0}}})
 	v.b.Handle(vipReceivePath, func(c bilitest.Call) bilitest.Reply {
 		if c.Method != "POST" || c.Form.Get("csrf") != "csrf-42" {
@@ -73,7 +88,7 @@ func TestVipPrivilegeAlreadyDone(t *testing.T) {
 			if state == 0 {
 				wantCalls = 1
 			}
-			if r.Status != api.StatusSkipped || v.b.Count(vipReceivePath) != wantCalls || r.Note != "这个月的权益都领过了" {
+			if r.Status != api.StatusSkipped || v.b.Count(vipReceivePath) != wantCalls {
 				t.Fatalf("%+v", r)
 			}
 		})
@@ -86,13 +101,13 @@ func TestVipPrivilegeDoesNotClaimAllDoneWithUnfinishedItems(t *testing.T) {
 		items  []map[string]int
 		code   int
 		status api.Status
-		note   string
+		claims int
 	}{
-		{"条件未满足", []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 2}}, 0, api.StatusSkipped, "条件还没满足，暂时领不了"},
-		{"领取失败", []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 0}}, -352, api.StatusFailed, "会员购优惠券失败"},
-		{"失败和未满足", []map[string]int{{"type": 1, "state": 0}, {"type": 2, "state": 2}}, -352, api.StatusFailed, "B 币券失败"},
-		{"空列表", nil, 0, api.StatusSkipped, "没有要做的"},
-		{"未知权益", []map[string]int{{"type": 9, "state": 0}}, 0, api.StatusSkipped, "没有要做的"},
+		{"条件未满足", []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 2}}, 0, api.StatusSkipped, 0},
+		{"领取失败", []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 0}}, -352, api.StatusFailed, 1},
+		{"失败和未满足", []map[string]int{{"type": 1, "state": 0}, {"type": 2, "state": 2}}, -352, api.StatusFailed, 1},
+		{"空列表", nil, 0, api.StatusSkipped, 0},
+		{"未知权益", []map[string]int{{"type": 9, "state": 0}}, 0, api.StatusSkipped, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := newEnv(t)
@@ -101,7 +116,7 @@ func TestVipPrivilegeDoesNotClaimAllDoneWithUnfinishedItems(t *testing.T) {
 			v.b.JSON(vipPrivilegePath, map[string]any{"list": tc.items})
 			v.b.Fail(vipReceivePath, tc.code, "风控")
 			r := v.runTask(42, TaskVipPrivilege)
-			if r.Status != tc.status || !strings.HasPrefix(r.Note, tc.note) || strings.Contains(r.Note, "这个月的权益都领过了") {
+			if r.Status != tc.status || v.b.Count(vipReceivePath) != tc.claims || strings.Contains(r.Note, "这个月的权益都领过了") {
 				t.Fatalf("%+v", r)
 			}
 		})
@@ -170,7 +185,7 @@ func TestChargeFreshBalanceAndComment(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 	comments := v.b.Calls(chargeCommentPath)
-	if len(comments) != 1 || comments[0].Form.Get("order_id") != "order-123" || comments[0].Form.Get("message") != "谢谢" || r.Note != "给 UID 77 充了 5 个 B 币" || step(t, r, "留言").Status != api.StatusSkipped {
+	if len(comments) != 1 || comments[0].Form.Get("order_id") != "order-123" || comments[0].Form.Get("message") != "谢谢" || step(t, r, "充电").Status != api.StatusOK || step(t, r, "留言").Status != api.StatusSkipped {
 		t.Fatalf("%+v %+v", comments, r)
 	}
 }
@@ -228,7 +243,7 @@ func TestVipPointNonVIP(t *testing.T) {
 
 func TestVipPointReceivesCompletesAndVerifies(t *testing.T) {
 	v := vipPointEnv(t, false)
-	states := map[string]int{"bonus": 0, "privilege": 1, "dress-view": 0, "vipmallview": 0, "animatetab": 0, "filmtab": 0, "ogvwatchnew": 0, "vipmallbuy": 0, "tvodbuy": 0, "dressbuyamount": 0}
+	states := map[string]int{"bonus": 0, "privilege": 0, "dress-view": 0, "vipmallview": 0, "animatetab": 0, "filmtab": 0, "ogvwatchnew": 0, "vipmallbuy": 0, "tvodbuy": 0, "dressbuyamount": 0}
 	n := 0
 	v.b.Handle(vipPointCombinePath, func(c bilitest.Call) bilitest.Reply {
 		if c.Query.Get("buvid") != "buvid3-42" || c.Query.Get("brand") != "Samsung" || c.Query.Get("csrf") != "csrf-42" || c.Header.Get("Referer") != "https://big.bilibili.com/mobile/bigPoint/task" {
@@ -236,7 +251,7 @@ func TestVipPointReceivesCompletesAndVerifies(t *testing.T) {
 		}
 		n++
 		if n == 2 {
-			for _, code := range []string{"bonus", "privilege", "dress-view", "vipmallview", "animatetab", "filmtab", "ogvwatchnew"} {
+			for _, code := range []string{"bonus", "privilege", "dress-view", "vipmallview", "animatetab", "filmtab"} {
 				states[code] = 3
 			}
 		}
@@ -248,14 +263,14 @@ func TestVipPointReceivesCompletesAndVerifies(t *testing.T) {
 	v.b.JSON("show.bilibili.com/api/activity/fire/common/event/dispatch", nil)
 	v.b.JSON("api.bilibili.com/pgc/activity/deliver/task/complete", nil)
 	r := v.runTask(42, TaskVipPoint)
-	if r.Status != api.StatusOK || r.Note != "做完 7 个积分任务，现在有 456 大积分" {
+	if r.Status != api.StatusOK || !strings.Contains(r.Note, "做完 6 个积分任务") || step(t, r, "观看正片").Status != api.StatusSkipped {
 		t.Fatalf("%+v", r)
 	}
 	var received []string
 	for _, c := range v.b.Calls(vipPointReceivePath) {
 		received = append(received, c.Form.Get("taskCode"))
 	}
-	if strings.Join(received, ",") != "bonus,dress-view,vipmallview,animatetab,filmtab,ogvwatchnew" {
+	if strings.Join(received, ",") != "bonus,privilege,dress-view,vipmallview,animatetab,filmtab,ogvwatchnew" {
 		t.Fatalf("%v", received)
 	}
 	seen := map[string]bool{}
@@ -272,7 +287,10 @@ func TestVipPointReceivesCompletesAndVerifies(t *testing.T) {
 				}
 				code = body["taskCode"]
 			}
-			if code != "privilege" && !seen[code] {
+			if code == "ogvwatchnew" {
+				t.Errorf("观看正片不应提交通用完成请求：%+v", c)
+			}
+			if !seen[code] {
 				t.Errorf("完成前没有领取 %s", code)
 			}
 		}
@@ -311,7 +329,7 @@ func TestVipPointRiskDoesNotStopOthersAndUnverifiedFails(t *testing.T) {
 	v.b.JSON(vipPointCompletePath, nil)
 	v.b.JSON(vipPointCompleteV2Path, nil)
 	r := v.runTask(42, TaskVipPoint)
-	if step(t, r, "大会员福利").Reason != "risk" || step(t, r, "浏览会员权益页").Reason != "changed" || step(t, r, "浏览装扮商城").Reason != "changed" || step(t, r, "观看正片").Status != api.StatusSkipped || v.b.Count(vipPointCompleteV2Path) != 2 {
+	if step(t, r, "大会员福利").Reason != "risk" || step(t, r, "浏览会员权益页").Reason != "changed" || step(t, r, "浏览装扮商城").Reason != "changed" || step(t, r, "观看正片").Status != api.StatusSkipped || v.b.Count(vipPointCompleteV2Path) != 1 {
 		t.Fatalf("%+v", r)
 	}
 }
@@ -330,6 +348,99 @@ func TestVipPointExperienceStates(t *testing.T) {
 			r := v.runTask(42, TaskVipPoint)
 			if step(t, r, "每日经验").Status != tc.want || (tc.state != 0 && v.b.Count(path) != 0) {
 				t.Fatalf("%+v", r)
+			}
+		})
+	}
+}
+
+func TestChargeRequiresActiveAnnualBeforePaymentWork(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		vipType   int
+		vipStatus int
+	}{
+		{"月度会员", 1, 1},
+		{"过期年度会员", 2, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := chargeEnv(t)
+			n := navData(42)
+			n["vipType"], n["vipStatus"] = tc.vipType, tc.vipStatus
+			n["wallet"] = map[string]any{"coupon_balance": 5}
+			v.b.JSON(navPath, n)
+			r := v.runTask(42, TaskCharge)
+			if r.Status != api.StatusSkipped || v.b.Count(navPath) != 2 || v.b.Count(vipPrivilegePath) != 0 || v.b.Count(chargePath) != 0 || v.b.Count(chargeCommentPath) != 0 {
+				t.Fatalf("%+v", r)
+			}
+		})
+	}
+}
+
+func TestChargeRechecksFreshAnnualMembership(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		vipType   int
+		vipStatus int
+	}{
+		{"到期", 2, 0},
+		{"降为月度", 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := chargeEnv(t)
+			count := 0
+			v.b.Handle(navPath, func(c bilitest.Call) bilitest.Reply {
+				count++
+				n := navData(42)
+				n["vipType"], n["vipStatus"] = 2, 1
+				if count > 1 {
+					n["vipType"], n["vipStatus"] = tc.vipType, tc.vipStatus
+				}
+				n["wallet"] = map[string]any{"coupon_balance": 5}
+				return bilitest.OK(n)
+			})
+			r := v.runTask(42, TaskCharge)
+			if r.Status != api.StatusSkipped || count != 3 || v.b.Count(chargePath) != 0 || v.b.Count(chargeCommentPath) != 0 {
+				t.Fatalf("nav 请求数 %d：%+v", count, r)
+			}
+		})
+	}
+}
+
+func TestVipPointWatchReceivesOnlyAndRequiresManualPlayback(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		state       int
+		receiveCode int
+		receives    int
+		want        api.Status
+	}{
+		{"领取后手动观看", 0, 0, 1, api.StatusSkipped},
+		{"已领取", 1, 0, 0, api.StatusSkipped},
+		{"已完成", 3, 0, 0, api.StatusSkipped},
+		{"条件未满足", 2, 0, 0, api.StatusSkipped},
+		{"未知状态", 7, 0, 0, api.StatusSkipped},
+		{"领取版本错误", 0, 6007000, 1, api.StatusFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := vipPointEnv(t, true)
+			v.b.JSON(vipPointCombinePath, vipPointData(map[string]int{"ogvwatchnew": tc.state}))
+			v.b.Fail(vipPointReceivePath, tc.receiveCode, "领取响应")
+			r := v.runTask(42, TaskVipPoint)
+			s := step(t, r, "观看正片")
+			if r.Status != tc.want || s.Status != tc.want || s.Code != tc.receiveCode || v.b.Count(vipPointReceivePath) != tc.receives || v.b.Count(vipPointCompletePath) != 0 || v.b.Count(vipPointCompleteV2Path) != 0 || v.b.Count("api.bilibili.com/pgc/activity/deliver/task/complete") != 0 || !strings.Contains(r.Note, "做完 0 个积分任务") {
+				t.Fatalf("%+v", r)
+			}
+			if tc.receiveCode == 0 && (tc.state == 0 || tc.state == 1) && s.Detail != vipPointWatchHelp {
+				t.Fatalf("领取后没有说明需手动观看：%+v", s)
+			}
+			if tc.state == 3 && s.Detail != "已完成" {
+				t.Fatalf("没有保留服务器完成状态：%+v", s)
+			}
+			if (tc.state == 2 || tc.state == 7) && (!strings.Contains(s.Detail, "本工具未自动播放") || strings.Contains(s.Detail, "任务已领取")) {
+				t.Fatalf("未知状态不应声称已领取或播放：%+v", s)
+			}
+			if tc.receiveCode != 0 && !strings.Contains(s.Detail, "6007000") {
+				t.Fatalf("没有保留领取错误：%+v", s)
 			}
 		})
 	}

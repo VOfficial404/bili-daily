@@ -18,7 +18,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 
 // app 的界面状态只在主线程读写，后台请求通过 post 返回结果。
 type app struct {
@@ -78,6 +78,7 @@ type app struct {
 	pickErr                         string
 	faces                           map[string]*ui.Bitmap
 	faceTried                       map[string]bool
+	upProfiles                      map[string]*upProfilePreview
 	fetchImage                      func(string) ([]byte, error)
 }
 
@@ -127,12 +128,14 @@ func (a *app) connected(session *client.Session, st api.State) {
 	a.formBase = client.CloneSettings(st.Settings)
 	a.dirty = false
 	a.inputs = map[string]string{}
+	a.upProfiles = nil
 	a.connectErr = ""
 	a.loadErr = ""
 	if err := a.savePrefs(); err != nil {
 		a.toast("连接成功，但保存连接信息失败：" + err.Error())
 	}
 	a.loadFaces()
+	a.preloadSavedUPProfiles()
 }
 func (a *app) connect() {
 	if a.connecting {
@@ -232,6 +235,7 @@ func (a *app) disconnect() {
 	a.reportsBusy = false
 	a.pickOpen = false
 	a.groupsBusy = false
+	a.upProfiles = nil
 	if a.onLocal != nil {
 		a.onLocal(false)
 	}
@@ -365,6 +369,7 @@ func (a *app) saveSettings() {
 			}
 			a.inputs = map[string]string{}
 			a.dirty = false
+			a.preloadSavedUPProfiles()
 			a.toast("设置已保存")
 		}
 	})
@@ -608,21 +613,24 @@ func downloadImage(u string) ([]byte, error) {
 }
 func (a *app) loadFaces() {
 	for _, acc := range a.st.Accounts {
-		u := acc.Face
-		if u == "" || a.faceTried[u] {
-			continue
-		}
-		a.faceTried[u] = true
-		fetch := a.fetchImage
-		a.async(func() func() {
-			b, err := fetch(u)
-			return func() {
-				if err == nil {
-					if bm, err := ui.DecodeBitmap(b); err == nil {
-						a.faces[u] = bm
-					}
+		a.loadFace(acc.Face)
+	}
+}
+
+func (a *app) loadFace(u string) {
+	if u == "" || a.faceTried[u] {
+		return
+	}
+	a.faceTried[u] = true
+	fetch := a.fetchImage
+	a.async(func() func() {
+		b, err := fetch(u)
+		return func() {
+			if err == nil {
+				if bm, err := ui.DecodeBitmap(b); err == nil {
+					a.faces[u] = bm
 				}
 			}
-		})
-	}
+		}
+	})
 }

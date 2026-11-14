@@ -165,6 +165,12 @@ func (c *Client) Groups(ctx context.Context, mid string) (g []Group, err error) 
 	return g, err
 }
 
+// UPProfile 查询指定 UID 的 UP 主昵称和头像。
+func (c *Client) UPProfile(ctx context.Context, mid string) (p UPProfile, err error) {
+	err = c.do(ctx, http.MethodGet, "/api/ups/"+url.PathEscape(mid), nil, &p)
+	return p, err
+}
+
 // Runs 返回最近的运行报告摘要，从新到旧；mid 为空时是所有账号的
 func (c *Client) Runs(ctx context.Context, mid string, limit int) (r []RunSummary, err error) {
 	q := url.Values{"mid": {mid}, "limit": {strconv.Itoa(limit)}}

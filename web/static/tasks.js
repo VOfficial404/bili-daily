@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { h, mount, icon, accountName } from "./dom.js";
 import { modal, confirm, toast, handleError } from "./app.js";
 import { sharedForm, toggle, number, text, list, saveBar } from "./form.js";
+import { upPreview } from "./ups.js";
 
 // 有选项的任务；其余只有开关
 const withOptions = new Set(["daily", "charge", "manga", "fans_medal", "live_lottery"]);
@@ -13,6 +14,11 @@ export function render(app) {
   const el = h("div");
   const body = h("div.task-groups");
   const runButtons = [];
+  const previews = []; // UP 主预览，重画或离开页面时停掉
+  const stopPreviews = () => {
+    for (const p of previews) p.stop();
+    previews.length = 0;
+  };
 
   const syncRun = () => {
     for (const b of runButtons) b.disabled = form.dirty || form.saving || app.busy.has("run");
@@ -21,17 +27,21 @@ export function render(app) {
 
   const build = () => {
     runButtons.length = 0;
+    stopPreviews();
     const groups = [];
     for (const t of app.st.tasks) if (!groups.includes(t.group)) groups.push(t.group);
     mount(body, groups.map((g) => h("section.task-group", null,
       h("h2.group-title", null, g),
-      app.st.tasks.filter((t) => t.group === g).map((t) => taskCard(app, form, t, runButtons)),
+      app.st.tasks.filter((t) => t.group === g).map((t) => taskCard(app, form, t, runButtons, previews)),
     )));
     syncRun();
   };
 
   form.attach(build);
   form.onChange(syncRun);
+  form.onChange(() => {
+    for (const p of previews) p.refresh();
+  });
   mount(el,
     h("header.page-head", null,
       h("div", null,
@@ -49,10 +59,11 @@ export function render(app) {
       if (form.sync()) build();
       syncRun();
     },
+    leave: stopPreviews,
   };
 }
 
-function taskCard(app, form, t, runButtons) {
+function taskCard(app, form, t, runButtons, previews) {
   const run = h("button.btn.btn-small", { type: "button", "data-k": "run-" + t.id, onclick: () => runOnce(app, form, t) }, icon("play"), "运行一次");
   runButtons.push(run);
   const head = h("div.task-card-head", null,
@@ -66,13 +77,21 @@ function taskCard(app, form, t, runButtons) {
   );
   const sw = t.manual ? null : toggle(form, ["tasks", t.id, "enabled"], "每天自动做");
   const opts = withOptions.has(t.id)
-    ? h("details.task-options", null, h("summary", null, "选项"), h("div.form-grid", null, options(form, t.id)))
+    ? h("details.task-options", null, h("summary", null, "选项"), h("div.form-grid", null, options(form, t.id, previews)))
     : null;
   return h("article.task-card", null, head, sw, opts, h("p.run-hint.muted.small", { hidden: true }, "先保存修改再运行。"));
 }
 
-function options(form, id) {
+function options(form, id, previews) {
   const p = (k) => ["tasks", id, k];
+  // withUP 在字段下面加上 UP 主预览；字段填得不对时先不显示
+  const withUP = (f, path, read) => {
+    const key = path.join(".");
+    const prev = upPreview(() => (form.errors.has(key) ? [] : read(form.get(path))));
+    previews.push(prev);
+    f.append(prev.el);
+    return f;
+  };
   switch (id) {
     case "daily":
       return [
@@ -82,11 +101,11 @@ function options(form, id) {
         number(form, p("keep_coins"), "至少保留硬币", "余额低于这个数就不投了。"),
         number(form, p("stop_at_level"), "到这个等级后停止投币", "0 表示一直投。", { min: 0, max: 6 }),
         toggle(form, p("like"), "投币时顺便点赞"),
-        list(form, p("up_ids"), "优先观看和投币的 UP 主 UID", "留空时从关注和排行榜里选。", true),
+        withUP(list(form, p("up_ids"), "优先观看和投币的 UP 主 UID", "留空时从关注和排行榜里选。", true), p("up_ids"), (v) => v || []),
       ];
     case "charge":
       return [
-        number(form, p("up_id"), "充电对象 UID", "会用掉全部 B 币券，开启前确认 UID 没填错。"),
+        withUP(number(form, p("up_id"), "充电对象 UID", "会用掉全部 B 币券，开启前确认 UID 没填错。"), p("up_id"), (v) => [v]),
         number(form, p("day"), "每月几号起充电", null, { min: 1, max: 28 }),
         text(form, p("comment"), "充电留言", "留空不留言。"),
       ];

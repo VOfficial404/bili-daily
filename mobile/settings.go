@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/VOfficial404/bili-daily/api"
 	"github.com/VOfficial404/bili-daily/client"
@@ -34,6 +35,11 @@ func (f *mobileSettingsForm) text(label, placeholder, initial string, keyboard c
 }
 
 func (f *mobileSettingsForm) number(label, detail string, initial int64, put func(int64)) core.Node {
+	row, _ := f.numberSignal(label, detail, initial, put)
+	return row
+}
+
+func (f *mobileSettingsForm) numberSignal(label, detail string, initial int64, put func(int64)) (core.Node, *core.Signal[string]) {
 	value := core.NewSignal(f.cx, strconv.FormatInt(initial, 10))
 	f.readers = append(f.readers, func() error {
 		n, err := strconv.ParseInt(strings.TrimSpace(value.Get()), 10, 64)
@@ -43,7 +49,7 @@ func (f *mobileSettingsForm) number(label, detail string, initial int64, put fun
 		put(n)
 		return nil
 	})
-	return mobileInput{Label: label, Detail: detail, Value: value.Get, OnChange: value.Set, Keyboard: core.KeyboardNumber, Inline: true}
+	return mobileInput{Label: label, Detail: detail, Value: value.Get, OnChange: value.Set, Keyboard: core.KeyboardNumber, Inline: true}, value
 }
 
 func (f *mobileSettingsForm) toggle(label, detail string, target *bool) core.Node {
@@ -86,6 +92,11 @@ func mobileSplitValues(text string) []string {
 }
 
 func (f *mobileSettingsForm) ids(label string, initial []int64, put func([]int64)) core.Node {
+	row, _ := f.idsSignal(label, initial, put)
+	return row
+}
+
+func (f *mobileSettingsForm) idsSignal(label string, initial []int64, put func([]int64)) (core.Node, *core.Signal[string]) {
 	parts := make([]string, len(initial))
 	for i, id := range initial {
 		parts[i] = strconv.FormatInt(id, 10)
@@ -104,7 +115,127 @@ func (f *mobileSettingsForm) ids(label string, initial []int64, put func([]int64
 		put(ids)
 		return nil
 	})
-	return mobileInput{Label: label, Placeholder: "多个 UID 用逗号分隔", Value: value.Get, OnChange: value.Set}
+	return mobileInput{Label: label, Placeholder: "多个 UID 用逗号分隔", Value: value.Get, OnChange: value.Set}, value
+}
+
+// upProfiles 只在 UID 改变或页面打开时查询，成功的资料保留在当前表单内。
+func (a *mobileApp) upProfiles(cx *core.Scope, value *core.Signal[string], single bool) core.Node {
+	cl := a.session.Client()
+	session, epoch := a.session, a.epoch
+	cache := make(map[string]api.UPProfile)
+	failures := make(map[string]string)
+	revision := core.NewSignal(cx, 0)
+	alive, generation := true, 0
+	var cancel context.CancelFunc
+	var stopDelay func() bool
+	parts := func(text string) []string {
+		if single {
+			return []string{strings.TrimSpace(text)}
+		}
+		return mobileSplitValues(text)
+	}
+	midOf := func(text string) string {
+		mid, err := strconv.ParseInt(text, 10, 64)
+		if err != nil || mid <= 0 {
+			return ""
+		}
+		return strconv.FormatInt(mid, 10)
+	}
+	cx.Cleanup(func() {
+		alive = false
+		generation++
+		if stopDelay != nil {
+			stopDelay()
+		}
+		if cancel != nil {
+			cancel()
+		}
+	})
+	cx.Effect(func() {
+		text := value.Get()
+		generation++
+		g := generation
+		if stopDelay != nil {
+			stopDelay()
+		}
+		if cancel != nil {
+			cancel()
+		}
+		clear(failures)
+		revision.Set(revision.GetUntracked() + 1)
+		var missing []string
+		seen := make(map[string]bool)
+		for _, part := range parts(text) {
+			mid := midOf(part)
+			if mid == "" || seen[mid] {
+				continue
+			}
+			seen[mid] = true
+			if _, ok := cache[mid]; !ok {
+				missing = append(missing, mid)
+			}
+		}
+		if !alive || len(missing) == 0 || epoch != a.epoch || session != a.session {
+			return
+		}
+		ctx, stop := context.WithCancel(cx.Context())
+		cancel = stop
+		stopDelay = cx.AfterFunc(350*time.Millisecond, func() {
+			if !alive || g != generation || ctx.Err() != nil || epoch != a.epoch || session != a.session {
+				return
+			}
+			go func() {
+				for _, mid := range missing {
+					if ctx.Err() != nil {
+						return
+					}
+					requestCtx, stopRequest := context.WithTimeout(ctx, 10*time.Second)
+					profile, err := cl.UPProfile(requestCtx, mid)
+					stopRequest()
+					cx.Post(func() {
+						if !alive || g != generation || ctx.Err() != nil || value.GetUntracked() != text || epoch != a.epoch || session != a.session {
+							return
+						}
+						if err != nil {
+							failures[mid] = err.Error()
+						} else {
+							cache[mid] = profile
+						}
+						revision.Set(revision.GetUntracked() + 1)
+					})
+				}
+			}()
+		})
+	})
+	return core.Dynamic(func(cx *core.Scope) core.Node {
+		_ = revision.Get()
+		ids := parts(value.Get())
+		if len(ids) == 0 {
+			return mobileRow{Title: "尚未设置优先 UP 主", Detail: "填写 UID 后显示头像与昵称"}
+		}
+		rows := make([]core.Node, 0, len(ids))
+		for _, id := range ids {
+			mid := midOf(id)
+			name, face, detail := "正在加载 UP 主信息", "", "UID："+id
+			switch {
+			case single && (id == "" || id == "0"):
+				name, detail = "未设置充电 UP 主", "UID："+id+" · 0 为不充电"
+			case mid == "":
+				name, detail = "UP 主信息不可用", detail+" · 请输入有效的正整数 UID"
+			case failures[mid] != "":
+				name, detail = "UP 主信息不可用", detail+" · "+failures[mid]+"；仍可保存 UID"
+			default:
+				if profile, ok := cache[mid]; ok {
+					name, face = profile.Uname, profile.Face
+					if name == "" {
+						name = "未命名 UP 主"
+					}
+				}
+			}
+			rows = append(rows, mobileRow{Title: name, Detail: detail, Leading: mobileAvatar(cx, name, face, 40)})
+		}
+		return core.View{Children: rows}
+	})
 }
 
 // mobileNotifyFields 是每个推送渠道要填的字段：令牌、目标和自建服务地址的名称，空为不需要。
@@ -184,6 +315,17 @@ func (a *mobileApp) settingsPage(cx *core.Scope) core.Node {
 
 	logLevel, _ := f.selectValue("日志级别", &s.LogLevel, mobileStringOptions("debug", "调试", "info", "信息", "warn", "警告", "error", "错误"))
 	logs := mobileSection(cx, "日志", "排查问题时可临时调到「调试」。", logLevel)
+	retention := core.NewSignal(cx, strconv.Itoa(s.ReportRetentionDays))
+	f.readers = append(f.readers, func() error {
+		days, err := strconv.Atoi(strings.TrimSpace(retention.Get()))
+		if err != nil || days < 1 || days > 365 {
+			return fmt.Errorf("报告保留天数：请输入 1–365 之间的整数")
+		}
+		s.ReportRetentionDays = days
+		return nil
+	})
+	reports := mobileSection(cx, "报告", "保留 1–365 天；每个账号最多保留 60 份报告。",
+		mobileInput{Label: "报告保留天数", Detail: "天", Value: retention.Get, OnChange: retention.Set, Keyboard: core.KeyboardNumber, Inline: true})
 
 	var taskRows []core.Node
 	for _, task := range state.Tasks {
@@ -233,7 +375,7 @@ func (a *mobileApp) settingsPage(cx *core.Scope) core.Node {
 	}
 	leave := mobileSection(cx, "", "App "+mobileVersion+" · 服务端 "+state.Version,
 		mobileRow{Icon: lucide.Unplug, Tint: colors.Danger, Title: action, Danger: true, Disabled: a.isBusy, OnPress: a.disconnect})
-	return mobilePage(cx, nil, nil, a.banner(cx), schedule, notify, tasks, logs, connection, save, leave)
+	return mobilePage(cx, nil, nil, a.banner(cx), schedule, notify, tasks, reports, logs, connection, save, leave)
 }
 
 // settingsTaskRow 是设置里的一个任务：点任务名打开选项，右侧是全局开关。
@@ -303,11 +445,13 @@ func (a *mobileApp) taskOptionsPage(cx *core.Scope, id string) core.Node {
 			f.number("至少保留硬币", "", int64(o.KeepCoins), func(v int64) { o.KeepCoins = int(v) }),
 			f.number("停止投币等级", "0 为不限", int64(o.StopAtLevel), func(v int64) { o.StopAtLevel = int(v) }),
 			f.toggle("投币时点赞", "", &o.Like))
-		add("优先 UP 主", "留空时从关注和排行榜里选视频。", f.ids("优先 UP 主 UID", o.UpIDs, func(v []int64) { o.UpIDs = v }))
+		upIDs, upIDsValue := f.idsSignal("优先 UP 主 UID", o.UpIDs, func(v []int64) { o.UpIDs = v })
+		add("优先 UP 主", "留空时从关注和排行榜里选视频。信息加载失败也可保存 UID。", upIDs, a.upProfiles(cx, upIDsValue, false))
 	case "charge":
 		o := &s.Tasks.Charge
+		upID, upIDValue := f.numberSignal("充电 UP 主 UID", "0 为不充电", o.UpID, func(v int64) { o.UpID = v })
 		add("充电", "启用后每月会把全部 B 币券余额充给这位 UP 主，保存前会再次确认。",
-			f.number("充电 UP 主 UID", "0 为不充电", o.UpID, func(v int64) { o.UpID = v }),
+			upID, a.upProfiles(cx, upIDValue, true),
 			f.number("每月几号之后充电", "1–28", int64(o.Day), func(v int64) { o.Day = int(v) }),
 			f.text("充电留言", "可不填", o.Comment, core.KeyboardDefault, func(v string) { o.Comment = v }))
 	case "manga":

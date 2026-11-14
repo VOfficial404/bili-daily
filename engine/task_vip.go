@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 func init() {
@@ -61,8 +61,10 @@ func runVipPrivilege(x *Ctx) {
 		return
 	}
 	var claimed []string
+	allClaimed := len(items) > 0
 	for _, it := range items {
 		if it.Type < 1 || it.Type >= len(vipPrivilegeNames) {
+			allClaimed = false
 			continue
 		}
 		name := vipPrivilegeNames[it.Type]
@@ -78,18 +80,20 @@ func runVipPrivilege(x *Ctx) {
 			case bili.IsCode(err, 69801):
 				x.Skip(name, "这个月已经领过")
 			default:
+				allClaimed = false
 				x.Fail(name, err)
 				if x.Aborted() {
 					return
 				}
 			}
 		default:
+			allClaimed = false
 			x.Skip(name, "条件还没满足，暂时领不了")
 		}
 	}
 	if len(claimed) > 0 {
 		x.Note("领到 %s", strings.Join(claimed, "、"))
-	} else {
+	} else if allClaimed {
 		x.Note("这个月的权益都领过了")
 	}
 }

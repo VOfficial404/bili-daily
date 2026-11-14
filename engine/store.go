@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
+	"github.com/VOfficial404/bili-daily/api"
 )
 
 // 数据目录的结构：

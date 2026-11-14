@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/VOfficial404/bili-tools/api"
+	"github.com/VOfficial404/bili-daily/api"
 )
 
 // DefaultSettings 是没有 settings.json 时的设置：扫码之后不用改任何东西就能用。

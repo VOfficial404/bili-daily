@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 // 每日计划因为网络问题连登录检查都没过时，隔一会儿再试，一天最多 maxRetries 次

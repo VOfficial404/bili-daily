@@ -1,10 +1,10 @@
 # 设计
 
-bili-tools 定时替 B 站账号完成每日任务。功能参考 [BiliBiliToolPro](https://github.com/RayWangQvQ/BiliBiliToolPro)，实现是独立的：没有使用它的代码，只参考了它用到的 B 站接口（整理在 [research/](research/) 里）。
+bili-daily 定时替 B 站账号完成每日任务。功能参考 [BiliBiliToolPro](https://github.com/RayWangQvQ/BiliBiliToolPro)，实现是独立的：没有使用它的代码，只参考了它用到的 B 站接口（整理在 [research/](research/) 里）。
 
 ## 和 BiliBiliToolPro 的区别
 
-| | BiliBiliToolPro | bili-tools |
+| | BiliBiliToolPro | bili-daily |
 |---|---|---|
 | 排程 | 每个任务一条 cron，十几条各跑各的 | 每个账号每天一轮：到点依次做完所有开着的任务。只需要设一个开始时间 |
 | 配置 | 配置文件、环境变量、面板数据库三处，每个任务一组选项 | 一份设置，扫码之后不改任何东西就能用；每个任务只留真正需要决定的几项 |
@@ -37,11 +37,13 @@ flowchart LR
 
 服务端是一个 Go 包（`engine`），三种用法是同一份代码：
 
-- **服务器**：`cmd/bili-tools` 把它包成命令行程序，常驻运行。
+- **服务器**：`cmd/bili-daily` 把它包成命令行程序，常驻运行。
 - **桌面客户端的本机运行**：客户端在自己的进程里启动 `engine`，接口只监听 `127.0.0.1` 的随机端口，令牌保存在本机数据目录，界面像连服务器一样连过去。
 - **手机 App 的本机运行**：同上。手机系统可能暂停或结束后台进程，本机任务只有在 App 打开时可靠运行。回到前台时调用 `Engine.Wake()` 重新检查并补跑；后台保留引擎和二维码，避免切换到 B 站后丢失扫码会话。稳定定时推荐连服务器。
 
 客户端连服务器和连本机走的是同一套接口，所以界面只有一份逻辑。
+
+`client.Session` 统一连接、本机引擎启停、设置保存和状态刷新：保存前从服务器取最新设置并做三方合并；保存之前发出的刷新不能覆盖已保存设置。停止本机引擎会等待关闭完成，监听器在返回本机地址之前已登记，立即停止也不会留下端口。
 
 ### 为什么服务端不用 Gojo
 
@@ -55,16 +57,34 @@ flowchart LR
 
 ```
 api/              接口的数据类型和 Go 客户端，服务端和客户端共用
+client/           客户端共用的连接、本机引擎、设置合并与展示逻辑；不依赖界面库
 bili/             B 站接口：发请求、签名、登录，以及各任务用到的接口。不保存任何东西
 bili/bilitest/    测试用的假 B 站
 engine/           服务端：账号、每日计划、任务、运行报告、推送、接口
-cmd/bili-tools/   服务器上的命令行程序
-desktop/          桌面客户端（单独的 Go 模块）
-mobile/           手机 App（单独的 Go 模块）
-docs/research/    整理的 B 站接口资料
+cmd/bili-daily/   服务器上的命令行程序
+web/              服务器自带的网页面板：嵌进程序的静态页面（无构建步骤的原生 JS），通过 /api 取数据
+app/              MyGo 客户端（单独的 Go 模块）；目前用于桌面，窄窗口已有紧凑布局，后续接入手机端
+mobile/           过渡期的 NSGo 手机 App（单独的 Go 模块）
+scripts/          服务器的安装脚本
+site/             项目主页（GitHub Pages）；图标和截图在发布时从 web/static 和 docs/images 拷入
+internal/icongen/ 画应用图标的小程序，桌面、托盘和手机的图标都由它生成
+docs/research/    整理的 B 站接口资料，和 NSGo 可行性的记录
 ```
 
-`desktop` 和 `mobile` 是单独的 Go 模块，用 `replace` 指向上一级目录：这样服务端的 `go.mod` 里没有界面库。
+`app` 和 `mobile` 是单独的 Go 模块，用 `replace` 指向上一级目录：这样服务端的 `go.mod` 里没有界面库。
+
+### 迁移到 MyGo 手机端
+
+目标是让桌面和手机共用 `app/` 一套 MyGo 界面，减少两份界面的维护。现在已把连接、本机引擎生命周期、设置合并与展示辅助逻辑放到无界面依赖的 `client` 包；`app/` 的紧凑布局已用于窄窗口。令牌通过 `mygo.Secrets` 保存，手机支持落地后由它映射到 iOS Keychain / Android Keystore。
+
+[MyGo PR #940](https://github.com/egoist/mygo/pull/940) 合并并发布后，具体迁移步骤：
+
+1. 在 `app/` 增加 iOS / Android 平台入口，用同一模块执行 `mygo build -platform ios` 或 `mygo build -platform android`；桌面托盘和关闭到托盘逻辑留在桌面文件。
+2. 用 `ui/mobile` 的栏和 sheet 适配手机布局，处理安全区域、键盘与页面前进返回（`Window.Push/Pop`）。
+3. 为本机引擎接入 `plugins/background`，保留前台唤醒补跑，并在真机验证切换到 B 站扫码和后台恢复。
+4. 完成真机验证后删除 `mobile/` 及 NSGo 依赖，更新 CI 和发布流程，统一从 `app/` 生成各平台产物。
+
+风险：该 PR 尚未合并，当前不依赖其中任何 API，NSGo 手机端继续工作；PR 说明 Android 尚未在设备上测试，后台执行和系统生命周期需要特别验证。
 
 ## 每日计划
 
@@ -154,7 +174,7 @@ func init() {
 
 | 方法和路径 | 作用 | 请求 | 响应 |
 |---|---|---|---|
-| `GET /api/ping` | 确认地址是 bili-tools，不需要令牌 | | `Ping` |
+| `GET /api/ping` | 确认地址是 bili-daily，不需要令牌 | | `Ping` |
 | `GET /api/state` | 界面要显示的全部状态，客户端每隔几秒取一次 | | `State` |
 | `POST /api/qr` | 申请登录二维码 | | `QR`（带图片） |
 | `GET /api/qr/{id}` | 查询扫码状态；成功时账号已经保存 | | `QR` |
@@ -191,5 +211,6 @@ data/
 
 - 服务端默认只监听 `127.0.0.1`。要从别的机器连，用 SSH 隧道，或者放在 HTTPS 反向代理后面；不要把明文 HTTP 直接暴露到公网，否则令牌会被看到。
 - 令牌不对时每次等 1 秒，并且串行处理。
+- 网页面板带严格的 CSP（只加载自己的脚本和样式），所有文字用 textContent 写进页面；令牌默认只存在当前标签页，勾选「记住」才放进 localStorage。面板只在服务器上提供，桌面和手机的本机运行不开放它。
 - 日志和报告里只记请求的主机和路径，不记查询参数和 Cookie。
 - 推送不经过给 B 站用的代理，报错里不带推送地址（地址里有密钥）。

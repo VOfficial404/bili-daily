@@ -26,7 +26,7 @@ jobs:
             if [ "$os" = windows ]; then ext=.exe; fi
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
               -ldflags "-s -w -X main.version=$GITHUB_REF_NAME" \
-              -o "out/bili-tools_${os}_${arch}${ext}" ./cmd/bili-tools
+              -o "out/bili-daily_${os}_${arch}${ext}" ./cmd/bili-daily
           done
       - uses: actions/upload-artifact@v4
         with:
@@ -44,6 +44,11 @@ jobs:
     needs: [server, desktop, mobile]
     runs-on: ubuntu-latest
     steps:
+      # 只取发布说明模板
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/release-notes.md
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -56,4 +61,6 @@ jobs:
           find artifacts -type f ! -name '*.sha256' -exec cp {} out/ \;
           cd out
           sha256sum * > checksums.txt
-          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          # 「下载哪个文件」放在最前，后面接自动生成的更新内容
+          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
+            --notes-file ../.github/release-notes.md --generate-notes

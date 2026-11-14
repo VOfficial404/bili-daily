@@ -6,19 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
-	"github.com/VOfficial404/bili-tools/bili/bilitest"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 const refreshPath = "passport.bilibili.com/x/passport-login/web/cookie/refresh"
@@ -182,6 +184,26 @@ func TestCanceledHTTPRemovalStillFinishesCleanup(t *testing.T) {
 	}
 }
 
+func TestServeLocalImmediatelyStoppedClosesListener(t *testing.T) {
+	previous := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(previous)
+	v := newEnv(t)
+	addr, err := v.e.ServeLocal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 不等服务 goroutine 启动就关闭，Stop 返回时监听器必须已经关闭。
+	v.e.Stop()
+	conn, err := net.DialTimeout("tcp", strings.TrimPrefix(addr, "http://"), time.Second)
+	if err == nil {
+		conn.Close()
+		t.Fatal("Stop 返回后本机端口仍在监听")
+	}
+	if _, err := v.e.ServeLocal(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("已停止的引擎重新开放接口：%v", err)
+	}
+}
+
 func TestStopCancelsDirectRunWithIndependentContext(t *testing.T) {
 	entered := make(chan struct{})
 	useTasks(t, toggle(TaskDaily, "blocked", func(x *Ctx) { close(entered); <-x.Done() }))
@@ -194,6 +216,64 @@ func TestStopCancelsDirectRunWithIndependentContext(t *testing.T) {
 	awaitSignal(t, finished)
 	if _, err := v.e.RunNow(context.Background(), "42", nil); !errors.Is(err, errBusy) {
 		t.Fatalf("stopped engine admitted run: %v", err)
+	}
+}
+
+func TestStopWaitsForReportsAndConcurrentStops(t *testing.T) {
+	for _, scheduled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("scheduled=%t", scheduled), func(t *testing.T) {
+			entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			releaseRun := func() { releaseOnce.Do(func() { close(release) }) }
+			defer releaseRun()
+			useTasks(t, toggle(TaskDaily, "blocked", func(x *Ctx) {
+				close(entered)
+				<-x.Done()
+				close(canceled)
+				<-release
+			}))
+			v := newEnv(t)
+			v.login(42)
+			if scheduled {
+				v.started()
+			} else {
+				go v.e.RunNow(context.Background(), "42", nil)
+			}
+			awaitSignal(t, entered)
+			stopped := []chan struct{}{make(chan struct{}), make(chan struct{})}
+			for _, done := range stopped {
+				go func() { v.e.Stop(); close(done) }()
+			}
+			awaitSignal(t, canceled)
+			for _, done := range stopped {
+				select {
+				case <-done:
+					t.Error("Stop returned before the canceled task finished")
+				default:
+				}
+			}
+			releaseRun()
+			for _, done := range stopped {
+				awaitSignal(t, done)
+			}
+			runs := v.e.listRuns("42", 10)
+			if len(runs) != 1 {
+				t.Fatalf("Stop returned with %d reports, want 1", len(runs))
+			}
+			run, err := v.e.loadRun(runs[0].ID)
+			if err != nil || run.Ended.IsZero() {
+				t.Fatalf("report not persisted when Stop returned: %+v, %v", run, err)
+			}
+			if a := v.e.account("42"); a.snapshot().LastRun == nil || a.running != nil {
+				t.Fatal("Stop returned before account state finished")
+			}
+			v.e.Stop()
+			v.e.Start()
+			if v.e.beginWork() {
+				v.e.workers.Done()
+				t.Fatal("stopped engine admitted new work")
+			}
+		})
 	}
 }
 

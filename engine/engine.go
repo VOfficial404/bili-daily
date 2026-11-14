@@ -1,5 +1,5 @@
-// Package engine 是 bili-tools 的服务端：账号、每日计划、任务、运行报告和给客户端用的接口。
-// 服务器上的 bili-tools 命令、桌面客户端和手机 App 的「本机运行」用的都是它。
+// Package engine 是 bili-daily 的服务端：账号、每日计划、任务、运行报告和给客户端用的接口。
+// 服务器上的 bili-daily 命令、桌面客户端和手机 App 的「本机运行」用的都是它。
 package engine
 
 import (
@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 type Config struct {
@@ -30,6 +30,7 @@ type Config struct {
 	Token     string            // 接口令牌。空时用 DataDir/token 里的，没有就生成一个存进去
 	Local     bool              // 在桌面或手机 App 里运行，而不是服务器上
 	LogOutput io.Writer         // 日志除了留在内存里给客户端看，还写到哪里；可以为 nil
+	Panel     http.Handler      // 接口之外的路径交给它，服务器上是网页面板；nil 时只有接口
 	Transport http.RoundTripper // 不为 nil 时代替真实网络和代理，测试用
 	Now       func() time.Time  // 测试用，nil 表示 time.Now
 	// Sleep 等 d 或者 ctx 取消。测试里换成不等待的；nil 表示真的等。
@@ -60,11 +61,13 @@ type Engine struct {
 	transports map[string]http.RoundTripper
 	started    bool
 	srv        *http.Server
+	listener   net.Listener // Serve 开始前登记，Stop 不依赖后台 goroutine 的启动时机
 
 	egressKick chan struct{}
 	ctx        context.Context
 	cancel     context.CancelFunc
 	stopOnce   sync.Once
+	workers    sync.WaitGroup // admission is serialized with Stop by mu
 }
 
 // New 打开数据目录。还没有开始排程，要调用 Start。
@@ -161,7 +164,7 @@ func (e *Engine) Settings() api.Settings {
 // Start 开始排程：每个账号按每日计划运行，定时查询出口 IP
 func (e *Engine) Start() {
 	e.mu.Lock()
-	if e.started {
+	if e.started || e.ctx.Err() != nil {
 		e.mu.Unlock()
 		return
 	}
@@ -170,6 +173,7 @@ func (e *Engine) Start() {
 	for _, a := range e.accounts {
 		accs = append(accs, a)
 	}
+	e.workers.Add(len(accs) + 2)
 	e.mu.Unlock()
 
 	s := e.Settings()
@@ -177,30 +181,45 @@ func (e *Engine) Start() {
 	if s.Proxy != "" {
 		where = "经代理 " + redactProxy(s.Proxy)
 	}
-	e.Infof("bili-tools %s 启动：每天 %s（北京时间）开始，随机推迟 0~%d 分钟，%s，数据目录 %s", e.cfg.Version, s.RunAt, s.Jitter, where, e.cfg.DataDir)
+	e.Infof("bili-daily %s 启动：每天 %s（北京时间）开始，随机推迟 0~%d 分钟，%s，数据目录 %s", e.cfg.Version, s.RunAt, s.Jitter, where, e.cfg.DataDir)
 	if len(accs) == 0 {
-		e.Infof("还没有账号：在客户端里点「添加账号」，或者运行 bili-tools login")
+		e.Infof("还没有账号：在客户端里点「添加账号」，或者运行 bili-daily login")
 	} else {
 		e.Infof("已加载 %d 个账号", len(accs))
 	}
 	for _, a := range accs {
-		go a.loop()
+		go func() { defer e.workers.Done(); a.loop() }()
 	}
-	go e.egressLoop()
-	go e.rescanLoop()
+	go func() { defer e.workers.Done(); e.egressLoop() }()
+	go func() { defer e.workers.Done(); e.rescanLoop() }()
 }
 
-// Stop 中止正在进行的运行，停下所有后台循环，关闭 ServeLocal 开的接口
+// Stop 中止正在进行的运行，关闭接口，并等待后台循环和运行报告保存完毕。可以重复或并发调用。
 func (e *Engine) Stop() {
 	e.stopOnce.Do(func() {
-		e.cancel()
 		e.mu.Lock()
-		srv := e.srv
+		e.cancel()
+		srv, ln := e.srv, e.listener
 		e.mu.Unlock()
 		if srv != nil {
 			srv.Close()
 		}
+		if ln != nil {
+			ln.Close()
+		}
 	})
+	e.workers.Wait()
+}
+
+// beginWork prevents a direct RunNow from entering after Stop begins waiting.
+func (e *Engine) beginWork() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ctx.Err() != nil {
+		return false
+	}
+	e.workers.Add(1)
+	return true
 }
 
 func (e *Engine) account(mid string) *account {
@@ -229,12 +248,19 @@ func (e *Engine) accountList() []*account {
 // accountLoggedIn 在扫码成功后调用：新账号开始排程，已有账号恢复排程
 func (e *Engine) accountLoggedIn(mid string) {
 	e.mu.Lock()
+	if e.ctx.Err() != nil {
+		e.mu.Unlock()
+		return
+	}
+	e.workers.Add(1)
+	defer e.workers.Done()
 	a, ok := e.accounts[mid]
 	if !ok {
 		a = e.newAccount(mid)
 		e.accounts[mid] = a
 		if e.started {
-			go a.loop()
+			e.workers.Add(1)
+			go func() { defer e.workers.Done(); a.loop() }()
 		}
 	}
 	e.mu.Unlock()
@@ -518,7 +544,11 @@ func (e *Engine) ListenAndServe(addr string) error {
 	if err != nil {
 		return err
 	}
-	return e.serve(ln)
+	srv, err := e.prepareServer(ln)
+	if err != nil {
+		return err
+	}
+	return e.serve(srv, ln)
 }
 
 // ServeLocal 在本机的随机端口上提供接口，返回地址（http://127.0.0.1:端口）。
@@ -528,15 +558,34 @@ func (e *Engine) ServeLocal() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	go e.serve(ln)
+	srv, err := e.prepareServer(ln)
+	if err != nil {
+		return "", err
+	}
+	go e.serve(srv, ln)
 	return "http://" + ln.Addr().String(), nil
 }
 
-func (e *Engine) serve(ln net.Listener) error {
+// prepareServer 和 Stop 通过 mu 串行登记监听器，并把服务循环计入关闭等待。
+func (e *Engine) prepareServer(ln net.Listener) (*http.Server, error) {
 	srv := &http.Server{Handler: e.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	e.mu.Lock()
-	e.srv = srv
-	e.mu.Unlock()
+	defer e.mu.Unlock()
+	if err := e.ctx.Err(); err != nil {
+		ln.Close()
+		return nil, err
+	}
+	if e.srv != nil {
+		ln.Close()
+		return nil, errors.New("接口已经启动")
+	}
+	e.srv, e.listener = srv, ln
+	e.workers.Add(1)
+	return srv, nil
+}
+
+func (e *Engine) serve(srv *http.Server, ln net.Listener) error {
+	defer e.workers.Done()
 	err := srv.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil

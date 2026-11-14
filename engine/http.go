@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 // 接口的说明见 docs/DESIGN.md。除了 /api/ping，都要带 Authorization: Bearer <令牌>。
@@ -24,6 +24,9 @@ var authFailMu sync.Mutex // 令牌不对时串行等待，拖慢暴力尝试
 // Handler 返回给客户端用的接口
 func (e *Engine) Handler() http.Handler {
 	mux := http.NewServeMux()
+	if e.cfg.Panel != nil {
+		mux.Handle("GET /", e.cfg.Panel)
+	}
 	mux.HandleFunc("GET /api/ping", e.handlePing)
 	mux.HandleFunc("GET /api/state", e.auth(e.handleState))
 	mux.HandleFunc("POST /api/qr", e.auth(e.handleQRStart))
@@ -98,7 +101,7 @@ func (e *Engine) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (e *Engine) handlePing(w http.ResponseWriter, r *http.Request) {
-	writeJSONResp(w, http.StatusOK, api.Ping{Name: "bili-tools", Version: e.cfg.Version})
+	writeJSONResp(w, http.StatusOK, api.Ping{Name: "bili-daily", Version: e.cfg.Version})
 }
 
 func (e *Engine) handleState(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +309,7 @@ func (e *Engine) handleNotifyTest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := e.push(r.Context(), s.Notify, "bili-tools 测试消息", "收到这条消息说明推送设置是对的。"); err != nil {
+	if err := e.push(r.Context(), s.Notify, "bili-daily 测试消息", "收到这条消息说明推送设置是对的。"); err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}

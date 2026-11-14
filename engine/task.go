@@ -8,8 +8,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 // 任务的 ID，也是设置和报告里用的名字

@@ -9,3 +9,5 @@
 !engine/**
 !cmd
 !cmd/**
+!web
+!web/**

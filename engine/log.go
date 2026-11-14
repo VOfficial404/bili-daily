@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
+	"github.com/VOfficial404/bili-daily/api"
 )
 
 type level int

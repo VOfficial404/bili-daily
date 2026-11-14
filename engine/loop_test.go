@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
+	"github.com/VOfficial404/bili-daily/api"
 )
 
 // started 启动排程循环；出口 IP 的查询也给一个回答

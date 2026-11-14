@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
+	"github.com/VOfficial404/bili-daily/api"
 )
 
 // notifyRun 按设置推送一轮的结果。手动运行不推送。
@@ -185,7 +185,7 @@ func (e *Engine) push(ctx context.Context, n api.Notify, title, text string) err
 			Code    *int   `json:"code"`
 			Message string `json:"message"`
 		}
-		if err := postJSON(ctx, hc, host+"/"+url.PathEscape(n.Token), map[string]any{"title": title, "body": text, "group": "bili-tools"}, &r); err != nil {
+		if err := postJSON(ctx, hc, host+"/"+url.PathEscape(n.Token), map[string]any{"title": title, "body": text, "group": "bili-daily"}, &r); err != nil {
 			return err
 		}
 		if r.Code == nil {

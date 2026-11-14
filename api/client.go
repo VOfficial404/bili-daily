@@ -81,7 +81,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	if resp.StatusCode != http.StatusOK {
 		e := &Error{Status: resp.StatusCode}
 		if json.Unmarshal(data, e) != nil || e.Message == "" {
-			e.Message = fmt.Sprintf("服务器返回 HTTP %d，这个地址可能不是 bili-tools", resp.StatusCode)
+			e.Message = fmt.Sprintf("服务器返回 HTTP %d，这个地址可能不是 bili-daily", resp.StatusCode)
 		}
 		return e
 	}
@@ -89,7 +89,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return errors.New("服务器的响应看不懂，这个地址可能不是 bili-tools，或者版本不一致")
+		return errors.New("服务器的响应看不懂，这个地址可能不是 bili-daily，或者版本不一致")
 	}
 	return nil
 }
@@ -100,12 +100,12 @@ func IsUnauthorized(err error) bool {
 	return errors.As(err, &e) && e.Status == http.StatusUnauthorized
 }
 
-// Ping 确认地址是一个 bili-tools 服务端，不需要令牌
+// Ping 确认地址是一个 bili-daily 服务端，不需要令牌
 func (c *Client) Ping(ctx context.Context) (Ping, error) {
 	var p Ping
 	err := c.do(ctx, http.MethodGet, "/api/ping", nil, &p)
-	if err == nil && p.Name != "bili-tools" {
-		err = errors.New("这个地址不是 bili-tools 的服务端")
+	if err == nil && p.Name != "bili-daily" {
+		err = errors.New("这个地址不是 bili-daily 的服务端")
 	}
 	return p, err
 }

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths: ["api/**", "bili/**", "engine/**", "desktop/**", ".github/workflows/desktop.yml"]
+    paths: ["api/**", "bili/**", "client/**", "engine/**", "app/**", ".github/workflows/desktop.yml"]
   workflow_dispatch:
   workflow_call:
 
@@ -23,13 +23,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: desktop
+        working-directory: app
         shell: bash
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
-          go-version-file: desktop/go.mod
+          go-version-file: app/go.mod
       - name: Install NSIS
         if: matrix.name == 'Windows'
         run: sudo apt-get update && sudo apt-get install -y nsis
@@ -40,15 +40,15 @@ jobs:
           version="$(jq -r .version mygo.json)"
           for dir in build/windows-*; do
             arch="${dir#build/windows-}"
-            (cd "$dir" && zip -qr "../bili-tools-desktop-${version}-windows-${arch}-portable.zip" "Bili Tools.exe" icon.png tray.png)
+            (cd "$dir" && zip -qr "../bili-daily-desktop-${version}-windows-${arch}-portable.zip" "Bili Daily.exe" icon.png tray.png)
           done
       - uses: actions/upload-artifact@v4
         with:
           name: Desktop-${{ matrix.name }}
           if-no-files-found: error
           path: |
-            desktop/build/*/*.dmg
-            desktop/build/*/*-setup-*.exe
-            desktop/build/*-portable.zip
-            desktop/build/*/*.deb
-            desktop/build/*/*.tar.gz
+            app/build/*/*.dmg
+            app/build/*/*-setup-*.exe
+            app/build/*-portable.zip
+            app/build/*/*.deb
+            app/build/*/*.tar.gz

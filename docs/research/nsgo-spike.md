@@ -4,7 +4,7 @@ Windows x64, web and Android arm64 all build on this host with Go alone, and the
 
 - **Version:** `github.com/nsgo-dev/nsgo v0.0.0-20261112150101-70cef6a4ed17` (pseudo-version, no release; commit `70cef6a4ed17f7c8428faabc9bb419ff4223745b`, 2026-11-12). License is Apache-2.0.
 - **Go requirement:** NSGo's `go.mod` says `go 1.26.0` and `cmd/nsgo/doctor.go` has `minGo = "go1.26"`. `go mod init` wrote `go 1.27.3` into the app's `go.mod` (host toolchain).
-- **Host shell quirk:** `PATH` is `;`-separated Windows style, so `PATH="$PWD/.tools/go/bin:$PATH"` does not work. What worked: `export PATH="D:\\Claude code\\.tools\\go\\bin;$PATH"`.
+- **Host shell quirk:** `PATH` is `;`-separated Windows style, so `PATH="$PWD/.tools/go/bin:$PATH"` does not work; the Go directory has to be prepended as a Windows path with `;`.
 
 ## (a) Build matrix
 
@@ -35,7 +35,7 @@ Output excerpts:
     → dist\releases\hello-0.1.0-android-arm64.apk
   error ios: the iOS SDK needs Xcode: xcrun --sdk iphoneos --show-sdk-path: exec: "xcrun": executable file not found in %PATH%
   error android_x64: the x86_64 emulator target needs an Android NDK: install one with sdkmanager "ndk;27.2.12479018" and set ANDROID_NDK_HOME; arm64 devices and emulators need none
-  error macos_arm64: codesign --force --sign - D:\Claude code\.tools\spike-nsgo\hello\dist-extra\hello-0.1.0-macos_arm64\hello.app: exec: "codesign": executable file not found in %PATH%
+  error macos_arm64: codesign --force --sign - dist-extra\hello-0.1.0-macos_arm64\hello.app: exec: "codesign": executable file not found in %PATH%
 ```
 
 `go tool nsgo doctor` on this host reported: Go 1.27.3 found; no adb, no NDK, no makensis; Chrome found. It marks all desktop targets, `android_arm64` and `web` as buildable, and every Apple target as "needs a Mac with Xcode".

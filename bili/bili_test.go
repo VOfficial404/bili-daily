@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/bili/bilitest"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 // bilibili-API-collect 的 docs/misc/sign/wbi.md 里给的例子

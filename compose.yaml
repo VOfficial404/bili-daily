@@ -1,17 +1,17 @@
 services:
-  bili-tools:
-    image: ghcr.io/vofficial404/bili-tools:latest
+  bili-daily:
+    image: ghcr.io/vofficial404/bili-daily:latest
     # 想自己从源码构建，把上面一行注释掉，换成：
     # build: .
-    container_name: bili-tools
+    container_name: bili-daily
     restart: unless-stopped
     environment:
-      # 客户端连接时要填的令牌。留空时自动生成，用 docker compose exec bili-tools bili-tools token 查看
-      BILI_TOOLS_TOKEN: ${BILI_TOOLS_TOKEN:-}
+      # 客户端连接时要填的令牌。留空时自动生成，用 docker compose exec bili-daily bili-daily token 查看
+      BILI_DAILY_TOKEN: ${BILI_DAILY_TOKEN:-}
     ports:
       # 默认只监听服务器本机，通过 SSH 隧道或 HTTPS 反向代理访问。
       # 确实要直接对外开放，改成 "8686:8686"（明文 HTTP，令牌会被看到，不推荐）
-      - "127.0.0.1:${BILI_TOOLS_PORT:-8686}:8686"
+      - "127.0.0.1:${BILI_DAILY_PORT:-8686}:8686"
     volumes:
       - ./data:/data
     logging:

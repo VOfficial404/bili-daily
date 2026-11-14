@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
-	"github.com/VOfficial404/bili-tools/bili/bilitest"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 const (
@@ -341,6 +341,35 @@ func TestDailyUPSelectionWBIAndFallback(t *testing.T) {
 	}
 }
 
+func TestDailyUPStringCopyrightWatchesAndCoins(t *testing.T) {
+	v := dailyEnv(t)
+	v.set(func(s *api.Settings) {
+		s.Tasks.Daily.UpIDs = []int64{100}
+		s.Tasks.Daily.Coins = 1
+		s.Tasks.Daily.Watch = true
+		s.Tasks.Daily.Share = false
+	})
+	v.b.JSON(dailyUploadsPath, map[string]any{
+		"page": map[string]any{"count": 1},
+		"list": map[string]any{"vlist": []any{map[string]any{"aid": 101, "bvid": "BV101", "title": "UP投稿", "copyright": "1"}}},
+	})
+	v.b.JSON(dailyViewPath, dailyVideo(101, 100, 1))
+	r := v.runTask(42, TaskDaily)
+	if r.Status != api.StatusOK || step(t, r, "观看视频").Status != api.StatusOK || step(t, r, "投币").Status != api.StatusOK || v.b.Count(dailyRankingPath) != 0 {
+		t.Fatalf("结果 = %+v", r)
+	}
+	heartbeats := v.b.Calls(dailyHeartbeatPath)
+	coins := v.b.Calls(dailyAddPath)
+	if len(heartbeats) != 2 || len(coins) != 1 || v.b.Count(dailyViewPath) == 0 {
+		t.Fatalf("心跳 %d 次，投币 %d 次，详情 %d 次", len(heartbeats), len(coins), v.b.Count(dailyViewPath))
+	}
+	for _, c := range append(heartbeats, coins...) {
+		if c.Form.Get("aid") != "101" {
+			t.Errorf("没有观看或投币给指定 UP：%+v", c)
+		}
+	}
+}
+
 func TestDailyCreatorExhaustionUsesRankingAndNoDuplicate(t *testing.T) {
 	v := dailyEnv(t)
 	dailyOnlyCoins(v, 3)
@@ -349,6 +378,7 @@ func TestDailyCreatorExhaustionUsesRankingAndNoDuplicate(t *testing.T) {
 		return bilitest.OK(map[string]any{"page": map[string]any{"count": 1}, "list": map[string]any{"vlist": []any{dailyVideo(1, 100, 1)}}})
 	})
 	v.b.JSON(dailyRankingPath, map[string]any{"list": []any{dailyVideo(1, 100, 1), dailyVideo(2, 100, 1), dailyVideo(3, 100, 1)}})
+	v.b.JSON(dailyViewPath, dailyVideo(1, 100, 1))
 	r := v.runTask(42, TaskDaily)
 	calls := v.b.Calls(dailyAddPath)
 	if r.Status != api.StatusOK || len(calls) != 3 || calls[0].Form.Get("aid") != "1" || v.b.Count(dailyUploadsPath) != 2 {

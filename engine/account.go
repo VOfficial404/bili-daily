@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 // account 是一个账号：保存的状态，加上它自己的排程循环
@@ -255,6 +255,10 @@ func (a *account) loop() {
 
 // execute 跑一轮并返回报告；这个账号已经在运行时返回 nil
 func (a *account) execute(parent context.Context, trigger string, ids []string) *api.Run {
+	if !a.e.beginWork() {
+		return nil
+	}
+	defer a.e.workers.Done()
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stopEngineCancel := context.AfterFunc(a.e.ctx, cancel)

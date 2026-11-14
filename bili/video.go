@@ -48,7 +48,7 @@ func (c *Client) DailyCoinExp(ctx context.Context) (int, error) {
 	return *exp, nil
 }
 
-// Video 是一个视频。投稿列表里的条目没有 CID、Copyright 和 Owner，要用 VideoView 补。
+// Video 是一个视频。投稿列表只保留 Aid、Bvid 和 Title，其余资料要用 VideoView 补。
 type Video struct {
 	Aid       int64  `json:"aid"`
 	Bvid      string `json:"bvid"`
@@ -73,7 +73,18 @@ type VideoUploads struct {
 
 // VideoUploads 取 UP 主投稿列表的一页，从新到旧；pn 从 1 开始，ps 是每页几个
 func (c *Client) VideoUploads(ctx context.Context, mid int64, pn, ps int) (VideoUploads, error) {
-	var d VideoUploads
+	var d struct {
+		Page struct {
+			Count int `json:"count"`
+		} `json:"page"`
+		List struct {
+			Videos []struct {
+				Aid   int64  `json:"aid"`
+				Bvid  string `json:"bvid"`
+				Title string `json:"title"`
+			} `json:"vlist"`
+		} `json:"list"`
+	}
 	err := c.Do(ctx, Request{
 		URL: "https://api.bilibili.com/x/space/wbi/arc/search",
 		Query: url.Values{
@@ -90,7 +101,16 @@ func (c *Client) VideoUploads(ctx context.Context, mid int64, pn, ps int) (Video
 		Header: map[string]string{"Origin": "https://space.bilibili.com"},
 		WBI:    true,
 	}, &d)
-	return d, err
+	if err != nil {
+		return VideoUploads{}, err
+	}
+	var uploads VideoUploads
+	uploads.Page.Count = d.Page.Count
+	uploads.List.Videos = make([]Video, len(d.List.Videos))
+	for i, v := range d.List.Videos {
+		uploads.List.Videos[i] = Video{Aid: v.Aid, Bvid: v.Bvid, Title: v.Title}
+	}
+	return uploads, nil
 }
 
 // VideoRanking 是全站排行榜，条目里带着 CID、Copyright 和 Owner

@@ -1,13 +1,15 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili/bilitest"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 const (
@@ -139,6 +141,32 @@ func TestLotteryFollowDisabledSkipsFollowRequired(t *testing.T) {
 	r := v.runTask(42, TaskLiveLottery)
 	if v.b.Count(lotteryJoinPath) != 0 || step(t, r, "参加").Status != api.StatusSkipped || !strings.Contains(step(t, r, "参加").Detail, "需要关注 1 个") || r.Note != "参加了 0 个抽奖" {
 		t.Fatalf("结果：%+v", r)
+	}
+}
+
+func TestLotteryBaselineFailureSkipsFollowRequired(t *testing.T) {
+	v := lotteryEnv(t, 1)
+	v.set(func(s *api.Settings) { s.Tasks.LiveLottery.Follow = true; s.Tasks.LiveLottery.Group = true })
+	v.b.Fail(lotteryFollowingPath, -352, "风控校验失败")
+	v.b.JSON(lotteryCheckPath, lotteryDetail(1, 1))
+	r := v.runTask(42, TaskLiveLottery)
+	if v.b.Count(lotteryJoinPath) != 0 || v.b.Count(lotteryFollowingPath) != 1 || v.b.Count(lotteryTagsPath) != 0 || step(t, r, "分组").Reason != "risk" || !strings.Contains(step(t, r, "参加").Detail, "需要关注 1 个") {
+		t.Fatalf("结果：%+v", r)
+	}
+}
+
+func TestLotteryBaselineFailureStillJoinsWithoutFollowing(t *testing.T) {
+	v := lotteryEnv(t, 2)
+	v.set(func(s *api.Settings) { s.Tasks.LiveLottery.Follow = true; s.Tasks.LiveLottery.Group = true })
+	v.b.Fail(lotteryFollowingPath, -352, "风控校验失败")
+	v.b.Handle(lotteryCheckPath, func(c bilitest.Call) bilitest.Reply {
+		id, _ := strconv.Atoi(c.Query.Get("roomid"))
+		return bilitest.OK(lotteryDetail(id, id%2))
+	})
+	r := v.runTask(42, TaskLiveLottery)
+	calls := v.b.Calls(lotteryJoinPath)
+	if len(calls) != 1 || calls[0].Form.Get("id") != "2" || r.Status != api.StatusPartial || !strings.Contains(r.Note, "参加了 1 个抽奖") {
+		t.Fatalf("请求：%v；结果：%+v", calls, r)
 	}
 }
 
@@ -280,6 +308,83 @@ func TestLotteryRiskInMiddleContinuesAndRepeatedRiskStops(t *testing.T) {
 			}
 			if !found {
 				t.Fatal("没有报告连续风控")
+			}
+		})
+	}
+}
+
+func TestLotteryGroupsJoinedHostsAfterStopping(t *testing.T) {
+	for _, path := range []string{lotteryCheckPath, lotteryJoinPath} {
+		t.Run(path, func(t *testing.T) {
+			v := lotteryEnv(t, 8)
+			v.set(func(s *api.Settings) { s.Tasks.LiveLottery.Follow = true; s.Tasks.LiveLottery.Group = true })
+			v.b.Handle(lotteryCheckPath, func(c bilitest.Call) bilitest.Reply {
+				id, _ := strconv.Atoi(c.Query.Get("roomid"))
+				if path == lotteryCheckPath && id > 1 {
+					return bilitest.Code(-509, "请求太频繁")
+				}
+				return bilitest.OK(lotteryDetail(id, 1))
+			})
+			v.b.Handle(lotteryJoinPath, func(c bilitest.Call) bilitest.Reply {
+				if path == lotteryJoinPath && c.Form.Get("id") != "1" {
+					return bilitest.Code(-403, "访问被拦截")
+				}
+				return bilitest.OK(nil)
+			})
+			v.b.Handle(lotteryFollowingPath, func(bilitest.Call) bilitest.Reply {
+				list := []any{map[string]any{"mid": 99}}
+				if v.b.Count(lotteryFollowingPath) > 1 {
+					list = append([]any{map[string]any{"mid": 1001}}, list...)
+				}
+				return bilitest.OK(map[string]any{"list": list, "total": len(list)})
+			})
+			v.b.JSON(lotteryTagsPath, []any{map[string]any{"tagid": 77, "name": "天选时刻"}})
+			v.b.JSON(lotteryCopyPath, nil)
+			r := v.runTask(42, TaskLiveLottery)
+			calls := v.b.Calls(lotteryCopyPath)
+			if v.b.Count(path) != 4 || len(calls) != 1 || calls[0].Form.Get("fids") != "1001" || step(t, r, "分组").Status != api.StatusOK || r.Status != api.StatusPartial || !strings.Contains(r.Note, "参加了 1 个抽奖") {
+				t.Fatalf("分组请求：%v；结果：%+v", calls, r)
+			}
+		})
+	}
+}
+
+func TestLotteryNetworkFailureStopsAfterThreeChecks(t *testing.T) {
+	v := lotteryEnv(t, 8)
+	checks := 0
+	v.e.cfg.Transport = roundTripper(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host+req.URL.Path == lotteryCheckPath {
+			checks++
+			return nil, errors.New("dial tcp: network is unreachable")
+		}
+		return v.b.RoundTrip(req)
+	})
+	r := v.runTask(42, TaskLiveLottery)
+	if checks != 3 || v.b.Count(lotteryJoinPath) != 0 || step(t, r, "参加").Reason != "network" || !strings.Contains(r.Note, "参加了 0 个抽奖") {
+		t.Fatalf("检查 %d 次；结果：%+v", checks, r)
+	}
+}
+
+func TestLotteryFailuresResetAfterSuccess(t *testing.T) {
+	for _, path := range []string{lotteryCheckPath, lotteryJoinPath} {
+		t.Run(path, func(t *testing.T) {
+			v := lotteryEnv(t, 6)
+			v.b.Handle(path, func(c bilitest.Call) bilitest.Reply {
+				id, _ := strconv.Atoi(c.Form.Get("id"))
+				if path == lotteryCheckPath {
+					id, _ = strconv.Atoi(c.Query.Get("roomid"))
+				}
+				if id%3 != 0 {
+					return bilitest.Code(-509, "请求太频繁")
+				}
+				if path == lotteryCheckPath {
+					return bilitest.OK(lotteryDetail(id, 0))
+				}
+				return bilitest.OK(nil)
+			})
+			r := v.runTask(42, TaskLiveLottery)
+			if v.b.Count(path) != 6 || r.Status != api.StatusOK || r.Note != "参加了 2 个抽奖" {
+				t.Fatalf("结果：%+v，端点请求%d次", r, v.b.Count(path))
 			}
 		})
 	}

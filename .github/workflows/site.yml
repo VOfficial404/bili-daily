@@ -1,0 +1,39 @@
+name: Site
+
+# 项目主页，发布到 GitHub Pages。仓库设置里 Pages 的来源要选「GitHub Actions」。
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "docs/images/**", "web/static/icon.svg", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      # 图标和截图不在 site/ 里另存一份，发布时从原处拷过来
+      - name: Assemble
+        run: |
+          mkdir -p _site/images
+          cp -r site/. _site/
+          cp web/static/icon.svg _site/icon.svg
+          cp docs/images/* _site/images/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

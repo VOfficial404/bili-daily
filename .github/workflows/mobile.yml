@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths: ["api/**", "bili/**", "engine/**", "mobile/**", ".github/workflows/mobile.yml"]
+    paths: ["api/**", "bili/**", "client/**", "engine/**", "mobile/**", ".github/workflows/mobile.yml"]
   workflow_dispatch:
   workflow_call:
 

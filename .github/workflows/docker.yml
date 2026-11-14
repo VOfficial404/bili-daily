@@ -10,6 +10,7 @@ on:
       - "bili/**"
       - "engine/**"
       - "cmd/**"
+      - "web/**"
       - "go.mod"
       - "go.sum"
       - "Dockerfile"

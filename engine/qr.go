@@ -8,8 +8,8 @@ import (
 
 	"rsc.io/qr"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 // B 站的登录二维码 180 秒后过期

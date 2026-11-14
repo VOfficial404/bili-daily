@@ -2,11 +2,12 @@ package engine
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili/bilitest"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 const (
@@ -60,13 +61,50 @@ func TestVipPrivilegeClaimsOnlyAvailableAndContinuesAfterRisk(t *testing.T) {
 }
 
 func TestVipPrivilegeAlreadyDone(t *testing.T) {
-	v := newEnv(t)
-	v.login(42)
-	v.vip(42, 2, 0)
-	v.b.JSON(vipPrivilegePath, map[string]any{"list": []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 2}}})
-	r := v.runTask(42, TaskVipPrivilege)
-	if r.Status != api.StatusSkipped || v.b.Count(vipReceivePath) != 0 {
-		t.Fatalf("%+v", r)
+	for _, state := range []int{0, 1} {
+		t.Run(strconv.Itoa(state), func(t *testing.T) {
+			v := newEnv(t)
+			v.login(42)
+			v.vip(42, 2, 0)
+			v.b.JSON(vipPrivilegePath, map[string]any{"list": []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": state}}})
+			v.b.Fail(vipReceivePath, 69801, "已领")
+			r := v.runTask(42, TaskVipPrivilege)
+			wantCalls := 0
+			if state == 0 {
+				wantCalls = 1
+			}
+			if r.Status != api.StatusSkipped || v.b.Count(vipReceivePath) != wantCalls || r.Note != "这个月的权益都领过了" {
+				t.Fatalf("%+v", r)
+			}
+		})
+	}
+}
+
+func TestVipPrivilegeDoesNotClaimAllDoneWithUnfinishedItems(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		items  []map[string]int
+		code   int
+		status api.Status
+		note   string
+	}{
+		{"条件未满足", []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 2}}, 0, api.StatusSkipped, "条件还没满足，暂时领不了"},
+		{"领取失败", []map[string]int{{"type": 1, "state": 1}, {"type": 2, "state": 0}}, -352, api.StatusFailed, "会员购优惠券失败"},
+		{"失败和未满足", []map[string]int{{"type": 1, "state": 0}, {"type": 2, "state": 2}}, -352, api.StatusFailed, "B 币券失败"},
+		{"空列表", nil, 0, api.StatusSkipped, "没有要做的"},
+		{"未知权益", []map[string]int{{"type": 9, "state": 0}}, 0, api.StatusSkipped, "没有要做的"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := newEnv(t)
+			v.login(42)
+			v.vip(42, 2, 0)
+			v.b.JSON(vipPrivilegePath, map[string]any{"list": tc.items})
+			v.b.Fail(vipReceivePath, tc.code, "风控")
+			r := v.runTask(42, TaskVipPrivilege)
+			if r.Status != tc.status || !strings.HasPrefix(r.Note, tc.note) || strings.Contains(r.Note, "这个月的权益都领过了") {
+				t.Fatalf("%+v", r)
+			}
+		})
 	}
 }
 

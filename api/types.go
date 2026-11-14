@@ -17,7 +17,7 @@ const (
 
 // Ping 是 GET /api/ping 的响应，不需要令牌，客户端用它确认地址对不对
 type Ping struct {
-	Name    string `json:"name"` // 固定为 bili-tools
+	Name    string `json:"name"` // 固定为 bili-daily
 	Version string `json:"version"`
 }
 

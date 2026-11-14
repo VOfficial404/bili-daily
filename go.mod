@@ -1,4 +1,4 @@
-module github.com/VOfficial404/bili-tools
+module github.com/VOfficial404/bili-daily
 
 go 1.27.3
 

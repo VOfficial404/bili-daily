@@ -1,9 +1,9 @@
-module github.com/VOfficial404/bili-tools/mobile
+module github.com/VOfficial404/bili-daily/mobile
 
 go 1.27.3
 
 require (
-	github.com/VOfficial404/bili-tools v0.0.0
+	github.com/VOfficial404/bili-daily v0.0.0
 	github.com/nsgo-dev/nsgo v0.0.0-20261112150101-70cef6a4ed17
 )
 
@@ -22,6 +22,6 @@ require (
 	rsc.io/qr v0.2.0 // indirect
 )
 
-replace github.com/VOfficial404/bili-tools => ../
+replace github.com/VOfficial404/bili-daily => ../
 
 tool github.com/nsgo-dev/nsgo/cmd/nsgo

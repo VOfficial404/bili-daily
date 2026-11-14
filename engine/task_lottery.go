@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili"
 )
 
 func init() {
@@ -96,19 +96,20 @@ scan:
 	joinedHosts := map[int64]bool{}
 	seenLotteries := map[int64]bool{}
 	excluded, notIncluded, gifts, medals, follows, ended := 0, 0, 0, 0, 0, 0
-	joinCalls, consecutiveRisk := 0, 0
+	joinCalls, consecutiveFailures := 0, 0
 	var firstErr, stopErr error
 	failed := func(err error) bool {
 		x.Debugf("天选时刻请求失败：%v", err)
 		if firstErr == nil {
 			firstErr = err
 		}
-		if bili.IsCode(err, -352, -412) {
-			consecutiveRisk++
-		} else {
-			consecutiveRisk = 0
+		switch bili.Classify(err) {
+		case bili.ReasonRisk, bili.ReasonRate, bili.ReasonNetwork:
+			consecutiveFailures++
+		default:
+			consecutiveFailures = 0
 		}
-		if bili.IsNotLogin(err) || x.Err() != nil || consecutiveRisk >= 3 {
+		if bili.IsNotLogin(err) || x.Err() != nil || consecutiveFailures >= 3 {
 			stopErr = err
 			return true
 		}
@@ -127,37 +128,37 @@ scan:
 			continue
 		}
 		if lottery == nil || lottery.Status != 1 || lottery.ID <= 0 {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			ended++
 			continue
 		}
 		if seenLotteries[lottery.ID] {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			continue
 		}
 		seenLotteries[lottery.ID] = true
 		if lotteryMatches(lottery.Award, opt.Exclude) {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			excluded++
 			continue
 		}
 		if len(opt.Include) > 0 && !lotteryMatches(lottery.Award, opt.Include) {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			notIncluded++
 			continue
 		}
 		if lottery.GiftPrice > 0 {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			gifts++
 			continue
 		}
 		if lottery.RequireType == nil || *lottery.RequireType < 0 || *lottery.RequireType > 1 {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			medals++
 			continue
 		}
-		if *lottery.RequireType == 1 && !opt.Follow {
-			consecutiveRisk = 0
+		if *lottery.RequireType == 1 && (!opt.Follow || opt.Group && !groupReady) {
+			consecutiveFailures = 0
 			follows++
 			continue
 		}
@@ -172,7 +173,7 @@ scan:
 				break
 			}
 		} else {
-			consecutiveRisk = 0
+			consecutiveFailures = 0
 			prizes = append(prizes, lottery.Award)
 			if *lottery.RequireType == 1 && room.UID > 0 {
 				joinedHosts[room.UID] = true
@@ -191,7 +192,6 @@ scan:
 		if x.Aborted() {
 			return
 		}
-		return
 	} else if len(prizes) == 0 && firstErr != nil {
 		x.Fail("参加", firstErr)
 		if x.Aborted() {

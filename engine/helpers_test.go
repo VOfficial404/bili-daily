@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VOfficial404/bili-tools/api"
-	"github.com/VOfficial404/bili-tools/bili/bilitest"
+	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 // testEnv 是测试用的一套：数据目录是临时的，B 站是假的，不真的等待，时间可以拨。

@@ -17,11 +17,6 @@ jobs:
     defaults:
       run:
         working-directory: mobile
-    env:
-      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
-      NSGO_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      NSGO_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -29,14 +24,24 @@ jobs:
           go-version-file: mobile/go.mod
       # 调试包也要沿用签名，否则下一次无法覆盖安装。
       - uses: actions/cache@v4
-        if: env.ANDROID_KEYSTORE == ''
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           path: mobile/.nsgo/android/debug.pem
           key: android-debug-signing-v1
       - name: Build APK
+        env:
+          ANDROID_KEYSTORE: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE || '' }}
+          NSGO_KEYSTORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          NSGO_KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEY_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEY_ALIAS || '' }}
         run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]] && { [ -z "$ANDROID_KEYSTORE" ] || [ -z "$NSGO_KEYSTORE_PASSWORD" ] || [ -z "$NSGO_KEY_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; }; then
+            echo "::error::Release requires the Android signing key and passwords in repository secrets."
+            exit 1
+          fi
           if [ -n "$ANDROID_KEYSTORE" ]; then
             printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.p12"
+            trap 'rm -f "$RUNNER_TEMP/release.p12"' EXIT
             go tool nsgo build -target android_arm64 -keystore "$RUNNER_TEMP/release.p12" -key-alias "$ANDROID_KEY_ALIAS"
           else
             go tool nsgo build -target android_arm64

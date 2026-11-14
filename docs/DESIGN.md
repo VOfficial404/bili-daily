@@ -113,6 +113,10 @@ Cookie 刷新得到新会话后，先把 Cookie 和 refresh_token 一起写入�
 | `live_lottery` | 天选时刻抽奖 | 关（会关注陌生主播） | |
 | `unfollow` | 批量取关一个分组 | 只能手动运行 | |
 
+投币前检查 `buvid3`：扫码登录时可能没取到设备 Cookie，缺失时从设备接口补取并保存到原会话；已有标识不更换，刷新凭据和其他 Cookie 不覆盖。补取或保存失败时不发投币请求。该要求见[接口资料镜像](https://github.com/bilibili-plugins/bilibili-api-collect/blob/master/docs/video/action.md#投币视频web端)；Cookie 存在不保证 B 站接受这次操作。
+
+`coin/add` 返回 `-403 账号异常` 时立即停止本轮投币，保留此前成功的数量，不自动重试。报告提示先核对官方 App 状态和服务器会话，不把该错误直接归因于频率或 IP。官方 App 正常与服务器请求被拒绝可以同时发生；补齐缺失的设备 Cookie 也不保证解除限制。
+
 账号不满足条件时任务记为「跳过」，不算失败。每个账号可以单独关掉某些任务。
 
 ### 怎么写一个任务

@@ -161,6 +161,9 @@ func dailyRun(x *Ctx) {
 // dailyCoins 最多投 need 个币，每个视频一次投 1 个，返回投出去几个。
 // wanted 是按设置今天还差几个：余额不够时 need 比它小，报告里说明。
 func dailyCoins(x *Ctx, picker *dailyPicker, need, wanted int) int {
+	if !prepareCoinDevice(x) {
+		return 0
+	}
 	seen := map[int64]bool{}
 	var titles []string
 	var lastErr error
@@ -249,6 +252,44 @@ func dailyCoins(x *Ctx, picker *dailyPicker, need, wanted int) int {
 		x.OK("投币", "%s", detail)
 	}
 	return n
+}
+
+// prepareCoinDevice 补齐扫码时可能没取到的设备 Cookie；已有标识保持不变。
+// 投币接口要求有效的 buvid3，但存在这个值并不等于 B 站一定接受当前会话。
+func prepareCoinDevice(x *Ctx) bool {
+	if x.C.Cookie("buvid3") != "" {
+		return true
+	}
+	fp, err := x.C.Fingerprint(x)
+	if err != nil {
+		x.Fail("准备投币设备 Cookie", err)
+		return false
+	}
+	if fp["buvid3"] == "" {
+		x.Failf("准备投币设备 Cookie", bili.ReasonChanged, "设备接口没有返回 buvid3，未发出投币请求；请稍后重新扫码")
+		return false
+	}
+	sess, err := x.e.loadSession(x.acc.mid)
+	if err != nil {
+		x.Failf("准备投币设备 Cookie", bili.ReasonOther, "读取会话失败，未发出投币请求：%v", err)
+		return false
+	}
+	for k, v := range fp {
+		if sess.Cookies[k] == "" {
+			sess.Cookies[k] = v
+		}
+	}
+	if _, err := x.e.saveSession(sess); err != nil {
+		x.Failf("准备投币设备 Cookie", bili.ReasonOther, "设备 Cookie 保存失败，未发出投币请求：%v", err)
+		return false
+	}
+	for k, v := range fp {
+		if x.C.Cookie(k) == "" {
+			x.C.SetCookie(k, v)
+		}
+	}
+	x.OK("准备投币设备 Cookie", "已补齐并保存缺失的设备 Cookie")
+	return true
 }
 
 // dailyTitle 是报告里用的视频名字

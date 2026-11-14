@@ -124,6 +124,9 @@ func (x *Ctx) Fail(name string, err error) {
 	var be *bili.Error
 	if errors.As(err, &be) && be.Code != bili.CodeNetwork && be.Code != bili.CodeBadResponse {
 		s.Code = be.Code
+		if be.Code == -403 && be.Path == "api.bilibili.com/x/web-interface/coin/add" {
+			s.Hint = "B 站将这次投币判为账号异常，本轮已停止投币，不会自动重试。先暂停投币并在官方 App 检查账号提示；若官方 App 正常，请检查服务器是否使用稳定出口，并在同一出口重新扫码更新会话。此错误本身不能确定是频率、IP 还是设备会话问题。"
+		}
 	}
 	if reason == bili.ReasonCanceled {
 		s.Detail = "运行被中止"

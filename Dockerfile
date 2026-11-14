@@ -9,6 +9,7 @@ COPY api ./api
 COPY bili ./bili
 COPY engine ./engine
 COPY cmd ./cmd
+COPY web ./web
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o /out/bili-daily ./cmd/bili-daily
 

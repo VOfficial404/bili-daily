@@ -14,11 +14,15 @@ import (
 )
 
 func (a *mobileApp) todayPage(cx *core.Scope) core.Node {
+	updatesOpen := core.NewSignal(cx, false)
 	return mobilePage(cx, a.refresh, a.refreshing.Get, a.banner(cx), core.Dynamic(func(cx *core.Scope) core.Node {
 		state := a.snapshot()
 		var nodes []core.Node
 		if state.Local {
 			nodes = append(nodes, a.notice(cx, lucide.Smartphone, "本机运行：手机系统可能暂停后台运行；稳定定时请连接服务器，回到 App 时补跑。"))
+		}
+		if notice := a.updateNotice(cx, state, updatesOpen); notice != nil {
+			nodes = append(nodes, notice)
 		}
 		nodes = append(nodes, a.summaryCard(cx, state))
 		for _, acc := range state.Accounts {

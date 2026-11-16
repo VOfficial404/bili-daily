@@ -40,6 +40,7 @@ func (a *app) overviewView(c *ui.Context) {
 			})
 		}
 	})
+	a.updateNotice(c)
 
 	if len(a.st.Accounts) == 0 {
 		panel(c).Padding(40).Gap(14).AlignItems(ui.Center).Children(func() {

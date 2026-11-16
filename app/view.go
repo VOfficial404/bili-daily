@@ -243,6 +243,9 @@ func (a *app) connectionInfo(c *ui.Context) {
 			}
 		}
 		muted(c, "服务端 "+a.st.Version+" · 客户端 "+version).FontSize(11)
+		for _, s := range checkUpdates(a.st, version).status() {
+			muted(c, s).FontSize(11)
+		}
 	})
 }
 

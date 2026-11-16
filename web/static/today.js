@@ -3,6 +3,7 @@
 import { api } from "./api.js";
 import { h, mount, icon, svgEl, live, statusText, statusGlyph, clock, dateLabel, weekday, minuteOfDay, dayKey, when, thousands, num, accountName } from "./dom.js";
 import { addAccount, avatar, levelBadge } from "./accounts.js";
+import { updateNotice } from "./updates.js";
 
 // taskOn 表示设置里这个任务开着（只能手动运行的任务不算）
 export function taskOn(s, id) {
@@ -28,7 +29,7 @@ const finished = (s) => s === "ok" || s === "skipped";
 export function render(app) {
   const el = h("div.today");
   const st = () => app.st;
-  return live(el, () => [st().accounts, st().tasks, st().settings, clock(st().now), [...app.busy]], () => draw(app, el));
+  return live(el, () => [st().accounts, st().tasks, st().settings, st().releases, clock(st().now), [...app.busy]], () => draw(app, el));
 }
 
 function draw(app, el) {
@@ -64,6 +65,7 @@ function draw(app, el) {
         }, icon("play"), "全部立即运行") : null,
       ),
     ),
+    updateNotice(st),
     st.accounts.length ? timeline(st, now) : empty(app),
     h("div.cards", null, st.accounts.map((acc) => card(app, acc, now))),
   );

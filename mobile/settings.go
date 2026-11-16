@@ -252,8 +252,10 @@ func (a *mobileApp) settingsPage(cx *core.Scope) core.Node {
 	if state.Local {
 		action = "停止本机运行"
 	}
-	leave := mobileSection(cx, "", "App "+mobileVersion+" · 服务端 "+state.Version,
-		mobileRow{Icon: lucide.Unplug, Tint: colors.Danger, Title: action, Danger: true, Disabled: a.isBusy, OnPress: a.disconnect})
+	leave := core.Dynamic(func(cx *core.Scope) core.Node {
+		return mobileSection(cx, "", mobileVersionSummary(a.snapshot()),
+			mobileRow{Icon: lucide.Unplug, Tint: colors.Danger, Title: action, Danger: true, Disabled: a.isBusy, OnPress: a.disconnect})
+	})
 	return mobilePage(cx, nil, nil, a.banner(cx), schedule, notify, tasks, reports, logs, connection, save, leave)
 }
 

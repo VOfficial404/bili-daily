@@ -15,6 +15,7 @@ var trayIcon []byte
 func configurePlatform(a *app, win *mygo.Window) {
 	var tray *mygo.Tray
 	quitting := false
+	a.openURL = mygo.Shell.OpenExternal
 	a.onLocal = func(running bool) {
 		if running && tray == nil {
 			t, err := mygo.NewTray(mygo.TrayOptions{ID: "main", Icon: trayIcon, IconIsTemplate: true, ToolTip: "Bili Daily：本机运行中", Menu: mygo.NewMenu([]*mygo.MenuItem{

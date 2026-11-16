@@ -323,6 +323,10 @@ func (a *app) settingsView(c *ui.Context) {
 			} else {
 				muted(c, "断开后，远程服务会继续运行。")
 			}
+			muted(c, "客户端 "+version+" · 服务端 "+a.st.Version).FontSize(13).Selectable()
+			for _, s := range checkUpdates(a.st, version).status() {
+				muted(c, s).FontSize(13)
+			}
 			ui.Button(c.Key("settings-disconnect"), label).OnClick(a.disconnect)
 		})
 	})

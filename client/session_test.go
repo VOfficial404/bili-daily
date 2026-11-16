@@ -37,6 +37,8 @@ func localConfig(t *testing.T) (engine.Config, *bilitest.Server) {
 		DataDir: t.TempDir(), Version: "test", Token: "session-test-token", Transport: b,
 		Now:   func() time.Time { return time.Date(2026, 11, 13, 12, 0, 0, 0, engine.Beijing) },
 		Sleep: func(ctx context.Context, d time.Duration) error { return ctx.Err() },
+		// 这些测试按出口 IP 查询这一个后台请求安排时序
+		NoUpdateCheck: true,
 	}, b
 }
 

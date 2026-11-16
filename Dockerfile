@@ -18,7 +18,8 @@ FROM gcr.io/distroless/static-debian12
 COPY --from=build /out/bili-daily /usr/local/bin/bili-daily
 # 容器里监听所有地址；对外开放到哪里由端口映射决定（compose.yaml 默认只映射到服务器本机）
 ENV BILI_DAILY_DATA=/data \
-    BILI_DAILY_ADDR=0.0.0.0:8686
+    BILI_DAILY_ADDR=0.0.0.0:8686 \
+    BILI_DAILY_DEPLOY=docker
 VOLUME /data
 EXPOSE 8686
 ENTRYPOINT ["bili-daily"]

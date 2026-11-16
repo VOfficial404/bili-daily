@@ -3,6 +3,7 @@
 import { api } from "./api.js";
 import { h, mount, when } from "./dom.js";
 import { sharedForm, text, number, select, saveBar } from "./form.js";
+import { updateStatus } from "./updates.js";
 
 const channels = [
   ["", "不推送"],
@@ -110,7 +111,8 @@ export function render(app) {
       h("section.panel", null,
         h("h2.section-title", null, "服务端"),
         h("dl.facts", null,
-          h("div.fact", null, h("dt", null, "版本"), h("dd", null, app.st.version)),
+          h("div.fact", null, h("dt", null, "版本"), h("dd", null, app.st.version,
+            updateStatus(app.st) ? h("span.muted.small", null, " · " + updateStatus(app.st)) : null)),
           h("div.fact", null, h("dt", null, "服务器时间"), h("dd", null, when(app.st.now))),
         ),
       ),

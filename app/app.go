@@ -82,6 +82,8 @@ type app struct {
 	upPicker                        *upPickerState
 	upPaste                         [2]upPasteInput
 	fetchImage                      func(string) ([]byte, error)
+	updateOpen                      bool
+	openURL                         func(string) error // 用系统浏览器打开网址，由平台入口设置
 }
 
 func newApp(s store, post func(func())) *app {

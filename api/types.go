@@ -30,6 +30,20 @@ type State struct {
 	Tasks    []TaskInfo `json:"tasks"`
 	Settings Settings   `json:"settings"`
 	Egress   *Egress    `json:"egress,omitempty"`
+	// Releases 是最近发布的几个正式版本，从新到旧；还没查到或者关了检查时为空。
+	// 客户端拿它和自己的版本比，判断要不要提示更新。
+	Releases []Release `json:"releases,omitempty"`
+	// UpdateHint 说明服务端怎么更新，例如 Docker 部署时是 docker compose 命令；本机运行时为空
+	UpdateHint string `json:"update_hint,omitempty"`
+}
+
+// Release 是一个已经发布的版本，来自 GitHub Releases
+type Release struct {
+	Version     string    `json:"version"`      // 标签，例如 v0.1.2
+	URL         string    `json:"url"`          // 发布页，下载和完整说明都在这里
+	Notes       string    `json:"notes"`        // 更新了什么：Markdown 列表的纯文本，没写时为空
+	PublishedAt time.Time `json:"published_at"` // 发布时间
+	Newer       bool      `json:"newer"`        // 比服务端正在运行的版本新
 }
 
 // Egress 是 B 站看到的出口 IP

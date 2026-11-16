@@ -45,6 +45,7 @@ const usage = `bili-daily：B 站每日任务
   BILI_DAILY_DATA    数据目录，默认是程序所在目录下的 data
   BILI_DAILY_ADDR    网页面板和接口的监听地址，默认 127.0.0.1:8686（只有本机能连）
   BILI_DAILY_TOKEN   接口令牌，默认自动生成并保存在数据目录里
+  BILI_DAILY_NO_UPDATE_CHECK  设为 1 时不去 GitHub 查新版本
 `
 
 func main() {
@@ -93,12 +94,22 @@ func dataDir() string {
 
 func open() (*engine.Engine, error) {
 	return engine.New(engine.Config{
-		DataDir:   dataDir(),
-		Version:   version,
-		Token:     os.Getenv("BILI_DAILY_TOKEN"),
-		LogOutput: os.Stderr,
-		Panel:     web.Handler(),
+		DataDir:       dataDir(),
+		Version:       version,
+		Token:         os.Getenv("BILI_DAILY_TOKEN"),
+		LogOutput:     os.Stderr,
+		Panel:         web.Handler(),
+		NoUpdateCheck: os.Getenv("BILI_DAILY_NO_UPDATE_CHECK") == "1",
+		UpdateHint:    updateHint(),
 	})
+}
+
+// updateHint 是面板上「怎么更新服务端」的说明。Docker 镜像里设了 BILI_DAILY_DEPLOY=docker。
+func updateHint() string {
+	if os.Getenv("BILI_DAILY_DEPLOY") == "docker" {
+		return "在 compose.yaml 所在目录运行 docker compose pull && docker compose up -d"
+	}
+	return "用安装脚本装的，再运行一次安装脚本；自己下载的，到发布页下载新的 bili-daily 替换后重启"
 }
 
 // panelURL 是启动日志里提示的面板地址；监听所有地址时（例如容器里）换成「服务器地址」让人自己填

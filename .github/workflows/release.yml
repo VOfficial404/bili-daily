@@ -15,6 +15,17 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      # 客户端拿自己的版本号和最新发布比；版本号没改就会一直提示「有新版本」
+      - name: Check versions and changelog
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          fail=0
+          grep -q "\"version\": \"$v\"" app/mygo.json || { echo "app/mygo.json 的 version 不是 $v"; fail=1; }
+          grep -q "const version = \"$v\"" app/app.go || { echo "app/app.go 的 version 不是 $v"; fail=1; }
+          grep -q "^version: $v\$" mobile/nsgo.yaml || { echo "mobile/nsgo.yaml 的 version 不是 $v"; fail=1; }
+          grep -q "const mobileVersion = \"$v\"" mobile/app.go || { echo "mobile/app.go 的 mobileVersion 不是 $v"; fail=1; }
+          grep -q "^## $GITHUB_REF_NAME\$" CHANGELOG.md || { echo "CHANGELOG.md 里没有「## $GITHUB_REF_NAME」"; fail=1; }
+          exit $fail
       - run: go test ./...
       - name: Build server binaries
         run: |
@@ -44,10 +55,12 @@ jobs:
     needs: [server, desktop, mobile]
     runs-on: ubuntu-latest
     steps:
-      # 只取发布说明模板
+      # 只取发布说明模板和更新日志
       - uses: actions/checkout@v5
         with:
-          sparse-checkout: .github/release-notes.md
+          sparse-checkout: |
+            .github/release-notes.md
+            CHANGELOG.md
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
@@ -61,6 +74,9 @@ jobs:
           find artifacts -type f ! -name '*.sha256' -exec cp {} out/ \;
           cd out
           sha256sum * > checksums.txt
-          # 「下载哪个文件」放在最前，后面接自动生成的更新内容
+          # 「更新了什么」放在最前（客户端里显示的就是这一段），后面是下载说明和自动生成的提交对比链接
+          awk -v tag="## $GITHUB_REF_NAME" '$0 == tag {on = 1; next} on && /^## / {exit} on' ../CHANGELOG.md > ../notes.md
+          printf '\n' >> ../notes.md
+          cat ../.github/release-notes.md >> ../notes.md
           gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
-            --notes-file ../.github/release-notes.md --generate-notes
+            --notes-file ../notes.md --generate-notes

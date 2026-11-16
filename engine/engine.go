@@ -35,6 +35,10 @@ type Config struct {
 	Now       func() time.Time  // 测试用，nil 表示 time.Now
 	// Sleep 等 d 或者 ctx 取消。测试里换成不等待的；nil 表示真的等。
 	Sleep func(ctx context.Context, d time.Duration) error
+	// NoUpdateCheck 为 true 时不去 GitHub 查新版本
+	NoUpdateCheck bool
+	// UpdateHint 告诉用户这个服务端怎么更新，原样给客户端显示；本机运行时留空
+	UpdateHint string
 }
 
 // Beijing 是北京时间。B 站按它算「每天」，所以计划和报告里的日期都用它，和服务器所在时区无关。
@@ -61,6 +65,8 @@ type Engine struct {
 	qrs        map[string]*qrLogin
 	transports map[string]http.RoundTripper
 	ups        map[string]cachedUP // 查到过的 UP 主资料，见 profiles.go
+	releases   []api.Release       // 最近发布的版本，见 update.go
+	announced  string              // 已经在日志里提示过的新版本
 	started    bool
 	srv        *http.Server
 	listener   net.Listener // Serve 开始前登记，Stop 不依赖后台 goroutine 的启动时机
@@ -165,7 +171,7 @@ func (e *Engine) Settings() api.Settings {
 	return cloneSettings(e.set)
 }
 
-// Start 开始排程：每个账号按每日计划运行，定时查询出口 IP
+// Start 开始排程：每个账号按每日计划运行，定时查询出口 IP 和有没有新版本
 func (e *Engine) Start() {
 	e.mu.Lock()
 	if e.started || e.ctx.Err() != nil {
@@ -177,7 +183,11 @@ func (e *Engine) Start() {
 	for _, a := range e.accounts {
 		accs = append(accs, a)
 	}
-	e.workers.Add(len(accs) + 3)
+	workers := len(accs) + 3
+	if !e.cfg.NoUpdateCheck {
+		workers++
+	}
+	e.workers.Add(workers)
 	e.mu.Unlock()
 
 	s := e.Settings()
@@ -197,6 +207,9 @@ func (e *Engine) Start() {
 	go func() { defer e.workers.Done(); e.egressLoop() }()
 	go func() { defer e.workers.Done(); e.rescanLoop() }()
 	go func() { defer e.workers.Done(); e.reportRetentionLoop() }()
+	if !e.cfg.NoUpdateCheck {
+		go func() { defer e.workers.Done(); e.updateLoop() }()
+	}
 }
 
 // Stop 中止正在进行的运行，关闭接口，并等待后台循环和运行报告保存完毕。可以重复或并发调用。
@@ -375,12 +388,13 @@ func (e *Engine) Accounts() []string {
 // State 是界面要显示的全部状态
 func (e *Engine) State() api.State {
 	st := api.State{
-		Version:  e.cfg.Version,
-		Local:    e.cfg.Local,
-		Now:      e.now(),
-		Accounts: []api.Account{},
-		Tasks:    []api.TaskInfo{},
-		Settings: e.Settings(),
+		Version:    e.cfg.Version,
+		Local:      e.cfg.Local,
+		UpdateHint: e.cfg.UpdateHint,
+		Now:        e.now(),
+		Accounts:   []api.Account{},
+		Tasks:      []api.TaskInfo{},
+		Settings:   e.Settings(),
 	}
 	for _, t := range allTasks() {
 		st.Tasks = append(st.Tasks, t.Info)
@@ -393,6 +407,7 @@ func (e *Engine) State() api.State {
 		eg := *e.egress
 		st.Egress = &eg
 	}
+	st.Releases = e.stateReleases()
 	e.mu.Unlock()
 	return st
 }

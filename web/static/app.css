@@ -298,12 +298,32 @@ button, input, select { font: inherit; color: inherit; }
 .test-result { font-size: 13px; color: var(--muted); }
 .test-result.is-ok { color: var(--ok); }
 .test-result.is-error { color: var(--danger); }
-.up-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.up-picker { grid-column: 1 / -1; }
+.up-list { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 4px; padding: 0; list-style: none; }
 .up-item { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.up-chosen { padding: 6px 6px 6px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.up-rank { width: 18px; text-align: center; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.up-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .up-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.up-uid { color: var(--muted); white-space: nowrap; }
-.up-note { color: var(--muted); min-width: 0; }
+.up-uid { color: var(--muted); white-space: nowrap; font-size: 12px; }
+.up-note { color: var(--muted); min-width: 0; font-size: 12px; }
 .up-item.is-error .up-note { color: var(--danger); }
+.up-actions { display: flex; gap: 2px; }
+.up-actions .btn { width: 30px; padding: 0; justify-content: center; }
+.up-empty { padding: 4px 0; }
+.up-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.up-add .input { flex: 1; min-width: 160px; height: 30px; }
+.up-pick-dialog { min-height: 0; }
+.up-pick-list { display: flex; flex-direction: column; gap: 4px; max-height: min(50vh, 420px); overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.up-pick-list:empty { display: none; }
+.up-pick {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; text-align: left;
+  border: 1px solid transparent; border-radius: 10px; background: transparent; color: inherit; cursor: pointer;
+}
+.up-pick:hover { background: var(--hover); }
+.up-pick[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.up-check { width: 18px; color: var(--accent); font-weight: 700; text-align: center; }
+.up-pick-status.is-error { color: var(--danger); }
 
 /* 任务页 */
 .task-groups { display: flex; flex-direction: column; gap: 28px; }

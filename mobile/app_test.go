@@ -359,8 +359,8 @@ func TestMobileChargeSavesRequireConfirmation(t *testing.T) {
 			app.Answer(1)
 			mobileWaitSaved(t, app, f, save, func(s api.Settings) bool { return s.Tasks.Charge.Enabled })
 			if !general {
-				app.Clear("label:充电 UP 主 UID")
-				app.Type("label:充电 UP 主 UID", "67890")
+				app.Type("label:粘贴 UID 或空间链接", "67890")
+				app.Press("role:button 添加")
 				app.Press("role:button " + save)
 				alerts = app.Alerts()
 				if !strings.Contains(alerts[len(alerts)-1].Message, "67890") {

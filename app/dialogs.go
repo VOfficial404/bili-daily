@@ -54,6 +54,7 @@ func (a *app) dialogs(c *ui.Context) {
 	}
 	a.runDialog(c)
 	a.guardDialog(c)
+	a.upPickerDialog(c)
 }
 
 func (a *app) runDialog(c *ui.Context) {

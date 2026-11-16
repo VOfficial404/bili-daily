@@ -4,7 +4,7 @@ import { api } from "./api.js";
 import { h, mount, icon, accountName } from "./dom.js";
 import { modal, confirm, toast, handleError } from "./app.js";
 import { sharedForm, toggle, number, text, list, saveBar } from "./form.js";
-import { upPreview } from "./ups.js";
+import { upPicker } from "./ups.js";
 
 // 有选项的任务；其余只有开关
 const withOptions = new Set(["daily", "charge", "manga", "fans_medal", "live_lottery"]);
@@ -77,20 +77,18 @@ function taskCard(app, form, t, runButtons, previews) {
   );
   const sw = t.manual ? null : toggle(form, ["tasks", t.id, "enabled"], "每天自动做");
   const opts = withOptions.has(t.id)
-    ? h("details.task-options", null, h("summary", null, "选项"), h("div.form-grid", null, options(form, t.id, previews)))
+    ? h("details.task-options", null, h("summary", null, "选项"), h("div.form-grid", null, options(app, form, t.id, previews)))
     : null;
   return h("article.task-card", null, head, sw, opts, h("p.run-hint.muted.small", { hidden: true }, "先保存修改再运行。"));
 }
 
-function options(form, id, previews) {
+function options(app, form, id, previews) {
   const p = (k) => ["tasks", id, k];
-  // withUP 在字段下面加上 UP 主预览；字段填得不对时先不显示
-  const withUP = (f, path, read) => {
-    const key = path.join(".");
-    const prev = upPreview(() => (form.errors.has(key) ? [] : read(form.get(path))));
-    previews.push(prev);
-    f.append(prev.el);
-    return f;
+  // up 是选 UP 主的字段，表单改动后跟着重画
+  const up = (path, label, hint, single) => {
+    const picker = upPicker(app, form, path, label, hint, single);
+    previews.push(picker);
+    return picker.el;
   };
   switch (id) {
     case "daily":
@@ -101,11 +99,11 @@ function options(form, id, previews) {
         number(form, p("keep_coins"), "至少保留硬币", "余额低于这个数就不投了。"),
         number(form, p("stop_at_level"), "到这个等级后停止投币", "0 表示一直投。", { min: 0, max: 6 }),
         toggle(form, p("like"), "投币时顺便点赞"),
-        withUP(list(form, p("up_ids"), "优先观看和投币的 UP 主 UID", "留空时从关注和排行榜里选。", true), p("up_ids"), (v) => v || []),
+        up(p("up_ids"), "优先观看和投币的 UP 主", "排在前面的先看、先投。不选时从关注和排行榜里挑。", false),
       ];
     case "charge":
       return [
-        withUP(number(form, p("up_id"), "充电对象 UID", "会用掉全部 B 币券，开启前确认 UID 没填错。"), p("up_id"), (v) => [v]),
+        up(p("up_id"), "充电对象", "会用掉全部 B 币券，开启前确认没选错。", true),
         number(form, p("day"), "每月几号起充电", null, { min: 1, max: 28 }),
         text(form, p("comment"), "充电留言", "留空不留言。"),
       ];

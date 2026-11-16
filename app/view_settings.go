@@ -99,37 +99,6 @@ func settingsParts(s string) []string {
 	})
 }
 
-func settingsIDs(s string) ([]int64, string) {
-	ids := make([]int64, 0)
-	for _, p := range settingsParts(s) {
-		n, err := strconv.ParseInt(p, 10, 64)
-		if err != nil || n <= 0 {
-			return nil, "UID 必须是正整数，用空格或逗号分隔"
-		}
-		ids = append(ids, n)
-	}
-	return ids, ""
-}
-
-func (a *app) settingsUIDs(c *ui.Context, label string, value *[]int64) {
-	parts := make([]string, 0, len(*value))
-	for _, n := range *value {
-		parts = append(parts, strconv.FormatInt(n, 10))
-	}
-	key := "UID:" + label
-	s := a.settingsRaw(key, strings.Join(parts, ", "))
-	ui.Field(c, label, func() {
-		if ui.TextInput(c.Key("settings-"+key), &s).Grow(1).Changed() {
-			a.inputs[key] = s
-			a.dirty = true
-			if ids, err := settingsIDs(s); err == "" {
-				*value = ids
-			}
-		}
-	}).Description("用空格或逗号分隔，留空自动选择。").Error(func() string { _, err := settingsIDs(s); return err }())
-	a.settingsUPPreviews(c, "daily", s)
-}
-
 func (a *app) settingsWords(c *ui.Context, label string, value *[]string, hint string) {
 	key := "关键词:" + label
 	s := a.settingsRaw(key, strings.Join(*value, "，"))
@@ -146,11 +115,6 @@ func (a *app) settingsInputError() string {
 	for key, s := range a.inputs {
 		if strings.HasPrefix(key, "整数:") && settingsIntegerError(s) != "" {
 			return strings.TrimPrefix(key, "整数:") + "：请输入有效的整数"
-		}
-		if strings.HasPrefix(key, "UID:") {
-			if _, err := settingsIDs(s); err != "" {
-				return strings.TrimPrefix(key, "UID:") + "：" + err
-			}
 		}
 	}
 	return ""
@@ -174,8 +138,18 @@ func (a *app) settingsSave(c *ui.Context, key string) {
 			label = "正在保存"
 		}
 		ui.PrimaryButton(c.Key(key), label).Disabled(!a.dirty || a.saving || err != "").OnClick(a.saveSettings)
+		ui.Button(c.Key(key+"-discard"), "放弃修改").Disabled(a.saving).OnClick(a.discardSettings)
 		muted(c, "有未保存的修改，所有账号共用")
 	})
+}
+
+func (a *app) discardSettings() {
+	a.form = client.CloneSettings(a.formBase)
+	a.inputs = map[string]string{}
+	a.upPaste = [2]upPasteInput{}
+	a.upPicker = nil
+	a.dirty, a.chargeConfirmed = false, false
+	a.formErr = ""
 }
 
 func (a *app) tasksView(c *ui.Context) {
@@ -255,13 +229,10 @@ func (a *app) settingsTaskOptions(c *ui.Context, id string) {
 		a.settingsNumber(c, "保留硬币数", &d.KeepCoins, "余额至少保留这么多硬币。")
 		a.settingsNumber(c, "停止投币等级", &d.StopAtLevel, "0～6 级，0 表示一直投币。")
 		a.settingsSwitch(c, "daily-like", "投币时点赞", &d.Like)
-		a.settingsUIDs(c, "优先观看的 UP 主 UID", &d.UpIDs)
+		a.settingsUPPicker(c, false)
 	case "charge":
 		d := &t.Charge
-		a.settingsNumber64(c, "充电对象 UID", &d.UpID, "会消耗 B 币券，启用前请确认对象。")
-		if mid, err := strconv.ParseInt(strings.TrimSpace(a.settingsRaw("整数:充电对象 UID", strconv.FormatInt(d.UpID, 10))), 10, 64); err == nil && mid > 0 {
-			a.settingsUPPreviews(c, "charge", strconv.FormatInt(mid, 10))
-		}
+		a.settingsUPPicker(c, true)
 		a.settingsNumber(c, "每月充电日期", &d.Day, "1～28 号，从这一天开始尝试充电。")
 		a.settingsText(c, "charge-comment", "充电留言", &d.Comment, "留空不留言。")
 	case "manga":

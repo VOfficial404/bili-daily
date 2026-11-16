@@ -39,6 +39,7 @@ func (e *Engine) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/accounts/{mid}", e.auth(e.handlePatch))
 	mux.HandleFunc("DELETE /api/accounts/{mid}", e.auth(e.handleRemove))
 	mux.HandleFunc("GET /api/accounts/{mid}/groups", e.auth(e.handleGroups))
+	mux.HandleFunc("GET /api/accounts/{mid}/followings", e.auth(e.handleFollowings))
 	mux.HandleFunc("GET /api/runs", e.auth(e.handleRuns))
 	mux.HandleFunc("GET /api/runs/{id}", e.auth(e.handleRunDetail))
 	mux.HandleFunc("PUT /api/settings", e.auth(e.handleSettings))

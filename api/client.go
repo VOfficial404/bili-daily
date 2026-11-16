@@ -165,6 +165,16 @@ func (c *Client) Groups(ctx context.Context, mid string) (g []Group, err error) 
 	return g, err
 }
 
+// Followings 取账号关注的第 pn 页（从 1 开始，每页 20 个）；q 不为空时在关注里按昵称搜索
+func (c *Client) Followings(ctx context.Context, mid string, pn int, q string) (f Followings, err error) {
+	v := url.Values{"pn": {strconv.Itoa(pn)}}
+	if q != "" {
+		v.Set("q", q)
+	}
+	err = c.do(ctx, http.MethodGet, "/api/accounts/"+url.PathEscape(mid)+"/followings?"+v.Encode(), nil, &f)
+	return f, err
+}
+
 // UPProfile 查询指定 UID 的 UP 主昵称和头像。
 func (c *Client) UPProfile(ctx context.Context, mid string) (p UPProfile, err error) {
 	err = c.do(ctx, http.MethodGet, "/api/ups/"+url.PathEscape(mid), nil, &p)

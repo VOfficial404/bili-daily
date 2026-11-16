@@ -79,6 +79,8 @@ type app struct {
 	faces                           map[string]*ui.Bitmap
 	faceTried                       map[string]bool
 	upProfiles                      map[string]*upProfilePreview
+	upPicker                        *upPickerState
+	upPaste                         [2]upPasteInput
 	fetchImage                      func(string) ([]byte, error)
 }
 
@@ -129,6 +131,8 @@ func (a *app) connected(session *client.Session, st api.State) {
 	a.dirty = false
 	a.inputs = map[string]string{}
 	a.upProfiles = nil
+	a.upPicker = nil
+	a.upPaste = [2]upPasteInput{}
 	a.connectErr = ""
 	a.loadErr = ""
 	if err := a.savePrefs(); err != nil {
@@ -236,6 +240,8 @@ func (a *app) disconnect() {
 	a.pickOpen = false
 	a.groupsBusy = false
 	a.upProfiles = nil
+	a.upPicker = nil
+	a.upPaste = [2]upPasteInput{}
 	if a.onLocal != nil {
 		a.onLocal(false)
 	}

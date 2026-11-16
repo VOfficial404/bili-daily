@@ -151,6 +151,52 @@ func TestUPProfileLookupsShareAccountPacingAndCache(t *testing.T) {
 	}
 }
 
+func TestFollowingsAPIListsSearchesAndFillsProfileCache(t *testing.T) {
+	v := newEnv(t)
+	v.login(42)
+	const listPath, searchPath = "api.bilibili.com/x/relation/followings", "api.bilibili.com/x/relation/followings/search"
+	v.b.JSON(listPath, map[string]any{"total": 21, "list": []any{
+		map[string]any{"mid": 100, "uname": " 甲 ", "face": "//i0.hdslb.com/a.jpg"},
+		map[string]any{"mid": 0, "uname": "无效"},
+	}})
+	v.b.JSON(searchPath, map[string]any{"total": 1, "list": []any{map[string]any{"mid": 200, "uname": "乙", "face": "https://i0.hdslb.com/b.jpg"}}})
+	srv := httptest.NewServer(v.e.Handler())
+	defer srv.Close()
+	c := api.NewClient(srv.URL, v.e.Token())
+
+	f, err := c.Followings(context.Background(), "42", 1, "")
+	if err != nil || f.Total != 21 || !f.More || len(f.List) != 1 || f.List[0] != (api.UPProfile{Mid: "100", Uname: "甲", Face: "https://i0.hdslb.com/a.jpg"}) {
+		t.Fatalf("followings=%+v error=%v", f, err)
+	}
+	call := v.b.Calls(listPath)[0]
+	if call.Query.Get("vmid") != "42" || call.Query.Get("order_type") != "attention" || call.Cookie["SESSDATA"] != "sess-42" {
+		t.Fatalf("关注请求 = %+v", call)
+	}
+	f, err = c.Followings(context.Background(), "42", 2, "乙")
+	if err != nil || f.More || len(f.List) != 1 || f.List[0].Mid != "200" {
+		t.Fatalf("search=%+v error=%v", f, err)
+	}
+	if q := v.b.Calls(searchPath)[0].Query; q.Get("name") != "乙" || q.Get("pn") != "2" || q.Get("vmid") != "42" {
+		t.Fatalf("搜索请求 = %v", q)
+	}
+	// 列出来的 UP 主选上后，预览直接用缓存，不再问 B 站
+	if p, err := c.UPProfile(context.Background(), "100"); err != nil || p.Uname != "甲" || v.b.Count(upProfileTestPath) != 0 {
+		t.Fatalf("profile=%+v error=%v calls=%d", p, err, v.b.Count(upProfileTestPath))
+	}
+	for _, bad := range []string{"0", "251", "x"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/accounts/42/followings?pn="+bad, nil)
+		req.Header.Set("Authorization", "Bearer "+v.e.Token())
+		rr := httptest.NewRecorder()
+		v.e.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("pn=%s status=%d", bad, rr.Code)
+		}
+	}
+	if _, err := c.Followings(context.Background(), "99", 1, ""); err == nil {
+		t.Fatal("不存在的账号应报错")
+	}
+}
+
 func TestUPProfileAPIHonorsRequestDeadlineAndCancellation(t *testing.T) {
 	for _, deadline := range []bool{false, true} {
 		name := "cancel"

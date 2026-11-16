@@ -36,15 +36,22 @@ func (c *Client) UPProfile(ctx context.Context, mid int64) (*UPProfile, error) {
 	if p.Mid != mid || p.Uname == "" {
 		return nil, &Error{Code: CodeBadResponse, Message: "UP 主资料不完整或 UID 不匹配，接口可能已变更", Path: path}
 	}
-	face := strings.TrimSpace(p.Face)
+	if p.Face = httpsFace(p.Face); p.Face == "" {
+		return nil, &Error{Code: CodeBadResponse, Message: "UP 主头像地址无效，接口可能已变更", Path: path}
+	}
+	return &p, nil
+}
+
+// httpsFace 把头像地址规整成 https；不是有效的 http(s) 地址时返回空
+func httpsFace(raw string) string {
+	face := strings.TrimSpace(raw)
 	if strings.HasPrefix(face, "//") {
 		face = "https:" + face
 	}
 	u, err := url.Parse(face)
 	if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return nil, &Error{Code: CodeBadResponse, Message: "UP 主头像地址无效，接口可能已变更", Path: path}
+		return ""
 	}
 	u.Scheme = "https"
-	p.Face = u.String()
-	return &p, nil
+	return u.String()
 }

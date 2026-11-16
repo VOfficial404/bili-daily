@@ -196,6 +196,7 @@ func init() {
 | `PATCH /api/accounts/{mid}` | 是否参加每日计划、关掉哪些任务 | `AccountPatch` | |
 | `DELETE /api/accounts/{mid}` | 退出账号：在 B 站注销会话并删除数据 | | |
 | `GET /api/accounts/{mid}/groups` | 关注分组，批量取关时选 | | `[]Group` |
+| `GET /api/accounts/{mid}/followings?pn=&q=` | 一页关注（每页 20 个，按最常访问排序），`q` 不为空时在关注里按昵称搜索；选 UP 主时用，和账号的任务共用请求间隔，列出的资料记进 UP 主资料缓存 | | `Followings` |
 | `GET /api/runs?mid=&limit=` | 最近的报告摘要，从新到旧 | | `[]RunSummary` |
 | `GET /api/runs/{id}` | 一份完整的报告 | | `Run` |
 | `PUT /api/settings` | 保存设置，立即生效；没传的项不变 | `Settings` | `Settings` |

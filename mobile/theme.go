@@ -204,6 +204,7 @@ type mobileInput struct {
 	TestID      string
 	Value       func() string
 	OnChange    func(string)
+	OnSubmit    func(string)
 	Keyboard    core.KeyboardType
 	Masked      bool
 	Inline      bool
@@ -215,7 +216,8 @@ func (f mobileInput) Render(cx *core.Scope) core.Node {
 	focused := core.NewSignal(cx, false)
 	field := core.Input{Label: f.Label, TestID: f.TestID, Value: f.Value, OnChange: f.OnChange, Placeholder: f.Placeholder, KeyboardType: f.Keyboard,
 		Masked: f.Masked, Disabled: f.Disabled, NoAutoCorrect: true, AutoCapitalize: core.AutoCapitalizeNone,
-		OnFocus: func() { focused.Set(true) }, OnBlur: func() { focused.Set(false) },
+		OnSubmit: f.OnSubmit,
+		OnFocus:  func() { focused.Set(true) }, OnBlur: func() { focused.Set(false) },
 		StyleFunc: func() core.Style {
 			s := core.Style{Height: core.Pt(40), Padding: core.Symmetric(0, 12), FontSize: 16, Color: colors.Text(), PlaceholderColor: colors.Faint(),
 				CaretColor: colors.Accent(), SelectionColor: cx.Palette().Selection, Background: colors.Field(), CornerRadius: 10,

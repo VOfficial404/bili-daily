@@ -33,6 +33,7 @@ type mobileApp struct {
 	stopPoll                    func() bool
 	cancel                      context.CancelFunc
 	refreshPending              bool
+	upProfileCache              map[string]api.UPProfile
 }
 
 func main() { nsgo.Run(Root) }
@@ -285,7 +286,11 @@ func (a *mobileApp) saveSettings(cx *core.Scope, base, edited api.Settings, done
 		})
 	}
 	if client.NeedsChargeConfirm(base, edited) {
-		cx.ShowAlert(core.AlertConfig{Title: "确认自动充电？", Message: fmt.Sprintf("充电 UP 主 UID：%d\n启用后，每月会将全部 B 币券余额充电给该 UP 主，请确认 UID 正确。", edited.Tasks.Charge.UpID), Actions: []core.AlertAction{{Label: "取消", Role: core.AlertCancel}, {Label: "确认并保存", Role: core.AlertDestructive}}}, func(index int) {
+		target := fmt.Sprintf("UID %d", edited.Tasks.Charge.UpID)
+		if profile, ok := a.upProfileCache[fmt.Sprint(edited.Tasks.Charge.UpID)]; ok && profile.Uname != "" {
+			target = profile.Uname + "（" + target + "）"
+		}
+		cx.ShowAlert(core.AlertConfig{Title: "确认自动充电？", Message: fmt.Sprintf("充电对象：%s\n启用后，每月会将全部 B 币券余额充电给该 UP 主，请确认对象正确。", target), Actions: []core.AlertAction{{Label: "取消", Role: core.AlertCancel}, {Label: "确认并保存", Role: core.AlertDestructive}}}, func(index int) {
 			if index == 1 {
 				save()
 			}

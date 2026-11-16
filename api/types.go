@@ -48,6 +48,13 @@ type UPProfile struct {
 	Face  string `json:"face"`
 }
 
+// Followings 是账号关注列表的一页，选优先 UP 主和充电对象时用
+type Followings struct {
+	List  []UPProfile `json:"list"`
+	Total int         `json:"total"`
+	More  bool        `json:"more"` // 后面还有下一页
+}
+
 // TaskInfo 描述一个任务，界面按它列出任务
 type TaskInfo struct {
 	ID     string `json:"id"`

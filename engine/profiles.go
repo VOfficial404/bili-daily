@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/VOfficial404/bili-daily/api"
 	"github.com/VOfficial404/bili-daily/bili"
@@ -86,5 +88,57 @@ func (e *Engine) handleUPProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	out := api.UPProfile{Mid: strconv.FormatInt(p.Mid, 10), Uname: p.Uname, Face: p.Face}
 	e.cacheUP(out)
+	writeJSONResp(w, http.StatusOK, out)
+}
+
+// handleFollowings 列出账号的一页关注，q 不为空时在关注里按昵称搜索。选优先 UP 主和充电对象用，
+// 和这个账号的任务共用请求间隔；列出来的资料记进 UP 主资料缓存，选上后不用再查一次。
+func (e *Engine) handleFollowings(w http.ResponseWriter, r *http.Request) {
+	a := e.withAccount(w, r)
+	if a == nil {
+		return
+	}
+	q := r.URL.Query()
+	pn := 1
+	if s := q.Get("pn"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 || n > 250 {
+			writeErr(w, http.StatusBadRequest, "页码只能是 1～250")
+			return
+		}
+		pn = n
+	}
+	name := strings.TrimSpace(q.Get("q"))
+	if utf8.RuneCountInString(name) > 32 {
+		writeErr(w, http.StatusBadRequest, "搜索的昵称最多 32 个字")
+		return
+	}
+	c, err := e.accountClient(a.mid)
+	if err != nil {
+		writeActionErr(w, err)
+		return
+	}
+	var users []bili.User
+	var total int
+	if name == "" {
+		users, total, err = c.Followings(r.Context(), pn, true)
+	} else {
+		users, total, err = c.SearchFollowings(r.Context(), name, pn)
+	}
+	if err != nil {
+		writeActionErr(w, err)
+		return
+	}
+	out := api.Followings{List: []api.UPProfile{}, Total: total, More: len(users) > 0 && pn*20 < total}
+	for _, u := range users {
+		p := api.UPProfile{Mid: strconv.FormatInt(u.Mid, 10), Uname: strings.TrimSpace(u.Uname), Face: u.Face}
+		if u.Mid <= 0 || p.Uname == "" {
+			continue
+		}
+		out.List = append(out.List, p)
+		if p.Face != "" {
+			e.cacheUP(p)
+		}
+	}
 	writeJSONResp(w, http.StatusOK, out)
 }

@@ -71,12 +71,12 @@ class Form {
     if (this.errors.size || this.saving) return;
     const c = this.data.tasks.charge, b = this.base.tasks.charge;
     if (c.enabled && (!b.enabled || c.up_id !== b.up_id)) {
-      if (!c.up_id) return toast("先在「B 币券充电」的选项里填写充电对象的 UID", "error");
+      if (!c.up_id) return toast("先在「B 币券充电」的选项里选好充电对象", "error");
       const up = cachedUP(c.up_id);
       const who = up && up.uname ? `「${up.uname}」（UID ${c.up_id}）` : `UID ${c.up_id}`;
       const ok = await confirm({
         title: "开启 B 币券充电？",
-        text: `每月 ${c.day} 号起，会把每个年度大会员账号的全部 B 币券充给 ${who}。充出去不能退回，请确认 UID 没填错。`,
+        text: `每月 ${c.day} 号起，会把每个年度大会员账号的全部 B 币券充给 ${who}。充出去不能退回，请确认对象没选错。`,
         ok: "确认并保存",
       });
       if (!ok) return;

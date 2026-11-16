@@ -20,10 +20,11 @@ type Tag struct {
 	Count int    `json:"count"`
 }
 
-// User 是关注列表里的一个人
+// User 是关注列表里的一个人。Face 已经换成 https 地址，地址不对时为空。
 type User struct {
 	Mid   int64  `json:"mid"`
 	Uname string `json:"uname"`
+	Face  string `json:"face"`
 }
 
 func (c *Client) spaceHeader(tail string) map[string]string {
@@ -81,6 +82,31 @@ func (c *Client) Followings(ctx context.Context, pn int, byAttention bool) (list
 		},
 		Header: c.spaceHeader("/fans/follow"),
 	}, &d)
+	for i := range d.List {
+		d.List[i].Face = httpsFace(d.List[i].Face)
+	}
+	return d.List, d.Total, err
+}
+
+// SearchFollowings 在账号的关注里按昵称搜索一页，pn 从 1 开始，每页 20 个
+func (c *Client) SearchFollowings(ctx context.Context, name string, pn int) (list []User, total int, err error) {
+	var d struct {
+		List  []User `json:"list"`
+		Total int    `json:"total"`
+	}
+	err = c.Do(ctx, Request{
+		URL: "https://api.bilibili.com/x/relation/followings/search",
+		Query: url.Values{
+			"vmid": {c.Mid()},
+			"name": {name},
+			"pn":   {strconv.Itoa(pn)},
+			"ps":   {"20"},
+		},
+		Header: c.spaceHeader("/fans/follow"),
+	}, &d)
+	for i := range d.List {
+		d.List[i].Face = httpsFace(d.List[i].Face)
+	}
 	return d.List, d.Total, err
 }
 

@@ -186,7 +186,7 @@ func init() {
 |---|---|---|---|
 | `GET /api/ping` | 确认地址是 bili-daily，不需要令牌 | | `Ping` |
 | `GET /api/state` | 界面要显示的全部状态，客户端每隔几秒取一次 | | `State` |
-| `GET /api/ups/{mid}` | 查询设置中 UP 主的公开资料，头像、昵称和 UID | | `UPProfile` |
+| `GET /api/ups/{mid}` | 查询设置中 UP 主的公开资料，头像、昵称和 UID。和账号的任务共用请求间隔，要排队；查到的留一天 | | `UPProfile` |
 | `POST /api/qr` | 申请登录二维码 | | `QR`（带图片） |
 | `GET /api/qr/{id}` | 查询扫码状态；成功时账号已经保存 | | `QR` |
 | `POST /api/run` | 所有账号立即跑一轮 | | |

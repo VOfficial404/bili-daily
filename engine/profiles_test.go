@@ -6,11 +6,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/VOfficial404/bili-daily/api"
+	"github.com/VOfficial404/bili-daily/bili/bilitest"
 )
 
 const upProfileTestPath = "api.bilibili.com/x/space/wbi/acc/info"
@@ -96,7 +99,7 @@ func TestUPProfileAPIAnonymousLookupAndInformativeErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v.b.Fail(upProfileTestPath, tc.code, "上游查询失败")
-			_, err := c.UPProfile(context.Background(), "42")
+			_, err := c.UPProfile(context.Background(), "43")
 			var ae *api.Error
 			if !errors.As(err, &ae) || ae.Status != tc.status || !strings.Contains(ae.Message, tc.message) {
 				t.Fatalf("error=%v", err)
@@ -104,8 +107,47 @@ func TestUPProfileAPIAnonymousLookupAndInformativeErrors(t *testing.T) {
 		})
 	}
 	v.b.JSON(upProfileTestPath, map[string]any{"mid": 43, "name": "错误 UID", "face": "https://i0.hdslb.com/up.jpg"})
-	if _, err := c.UPProfile(context.Background(), "42"); err == nil || !strings.Contains(err.Error(), "接口可能已变更") {
+	if _, err := c.UPProfile(context.Background(), "44"); err == nil || !strings.Contains(err.Error(), "接口可能已变更") {
 		t.Fatalf("changed response error=%v", err)
+	}
+}
+
+func TestUPProfileLookupsShareAccountPacingAndCache(t *testing.T) {
+	v := newEnv(t)
+	var mu sync.Mutex
+	var waits []time.Duration
+	v.e.cfg.Sleep = func(ctx context.Context, d time.Duration) error {
+		mu.Lock()
+		waits = append(waits, d)
+		mu.Unlock()
+		return ctx.Err()
+	}
+	v.login(42)
+	v.b.Handle(upProfileTestPath, func(c bilitest.Call) bilitest.Reply {
+		mid, _ := strconv.ParseInt(c.Query.Get("mid"), 10, 64)
+		return bilitest.OK(map[string]any{"mid": mid, "name": "UP", "face": "https://i0.hdslb.com/up.jpg"})
+	})
+	srv := httptest.NewServer(v.e.Handler())
+	defer srv.Close()
+	c := api.NewClient(srv.URL, v.e.Token())
+	for _, mid := range []string{"100", "200", "100"} {
+		if p, err := c.UPProfile(context.Background(), mid); err != nil || p.Mid != mid {
+			t.Fatalf("UID %s profile=%+v error=%v", mid, p, err)
+		}
+	}
+	if n := v.b.Count(upProfileTestPath); n != 2 {
+		t.Fatalf("查到过的 UID 不应再问 B 站：%d 次", n)
+	}
+	// 测试里时间不走：除了第一个请求，后面每个都要排在上一个的间隔之后
+	mu.Lock()
+	defer mu.Unlock()
+	if len(waits) != 4 || waits[0] != 0 {
+		t.Fatalf("等待 = %v", waits)
+	}
+	for _, d := range waits[1:] {
+		if d <= 0 {
+			t.Fatalf("资料查询没有按账号的节奏排队：%v", waits)
+		}
 	}
 }
 

@@ -60,6 +60,7 @@ type Engine struct {
 	egress     *api.Egress
 	qrs        map[string]*qrLogin
 	transports map[string]http.RoundTripper
+	ups        map[string]cachedUP // 查到过的 UP 主资料，见 profiles.go
 	started    bool
 	srv        *http.Server
 	listener   net.Listener // Serve 开始前登记，Stop 不依赖后台 goroutine 的启动时机
@@ -90,6 +91,7 @@ func New(cfg Config) (*Engine, error) {
 		accounts:   map[string]*account{},
 		qrs:        map[string]*qrLogin{},
 		transports: map[string]http.RoundTripper{},
+		ups:        map[string]cachedUP{},
 		egressKick: make(chan struct{}, 1),
 	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
@@ -450,14 +452,19 @@ func (e *Engine) anonClient() *bili.Client {
 	return c
 }
 
-// accountClient 返回以账号身份请求 B 站的客户端，请求之间按设置的节奏留间隔
+// accountClient 返回以账号身份请求 B 站的客户端，请求之间按设置的节奏留间隔。
+// 同一个账号的客户端共用一个间隔：运行中的任务和面板触发的查询排在同一队里。
 func (e *Engine) accountClient(mid string) (*bili.Client, error) {
 	sess, err := e.loadSession(mid)
 	if err != nil {
 		return nil, err
 	}
 	c := bili.New(e.transport(e.Settings().Proxy), sess.Cookies)
-	c.Wait = e.pacer()
+	if a := e.account(mid); a != nil {
+		c.Wait = a.wait
+	} else {
+		c.Wait = e.pacer()
+	}
 	c.Debugf = func(format string, args ...any) { e.logf(levelDebug, mid, format, args...) }
 	return c, nil
 }
@@ -488,9 +495,19 @@ func (e *Engine) pacer() func(ctx context.Context) error {
 		if wait < 0 {
 			wait = 0
 		}
-		next = now.Add(wait + gap)
+		slot := now.Add(wait + gap)
+		next = slot
 		mu.Unlock()
-		return e.cfg.Sleep(ctx, wait)
+		err := e.cfg.Sleep(ctx, wait)
+		if err != nil {
+			// 没等到就放弃的请求把位置还回去，除非后面已经有人排上
+			mu.Lock()
+			if next.Equal(slot) {
+				next = now.Add(wait)
+			}
+			mu.Unlock()
+		}
+		return err
 	}
 }
 

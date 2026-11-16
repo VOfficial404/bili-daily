@@ -14,8 +14,9 @@ import (
 
 // account 是一个账号：保存的状态，加上它自己的排程循环
 type account struct {
-	e   *Engine
-	mid string
+	e    *Engine
+	mid  string
+	wait func(ctx context.Context) error // 这个账号所有请求共用的间隔
 
 	mu          sync.Mutex
 	st          accountState
@@ -40,6 +41,7 @@ func (e *Engine) newAccount(mid string) *account {
 	return &account{
 		e:      e,
 		mid:    mid,
+		wait:   e.pacer(),
 		st:     e.loadState(mid),
 		wake:   make(chan struct{}, 1),
 		manual: make(chan []string, 1),

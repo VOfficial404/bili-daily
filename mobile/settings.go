@@ -325,6 +325,8 @@ func (a *mobileApp) taskOptionsPage(cx *core.Scope, id string) core.Node {
 			f.number("每天投币数", "0–5", int64(o.Coins), func(v int64) { o.Coins = int(v) }),
 			f.number("至少保留硬币", "", int64(o.KeepCoins), func(v int64) { o.KeepCoins = int(v) }),
 			f.number("停止投币等级", "0 为不限", int64(o.StopAtLevel), func(v int64) { o.StopAtLevel = int(v) }),
+			f.number("投币前最短等待（秒）", "0–600", int64(o.CoinDelayMin), func(v int64) { o.CoinDelayMin = int(v) }),
+			f.number("投币前最长等待（秒）", "0–600", int64(o.CoinDelayMax), func(v int64) { o.CoinDelayMax = int(v) }),
 			f.toggle("投币时点赞", "", &o.Like))
 		add("优先 UP 主", "按从上到下的顺序优先观看和投币；留空时从关注和排行榜里选视频。", a.upPicker(cx, f, o.UpIDs, false, func(ids []int64) { o.UpIDs = ids }))
 	case "charge":

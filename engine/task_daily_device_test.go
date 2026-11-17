@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/VOfficial404/bili-daily/api"
 	"github.com/VOfficial404/bili-daily/bili"
@@ -103,5 +106,85 @@ func TestDailyCoinsDoNotSpendWithoutDeviceCookie(t *testing.T) {
 				t.Fatal("设备获取失败不应保存部分结果")
 			}
 		})
+	}
+}
+
+func TestDailyCoinsWaitBeforeSpendingAndCancel(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		cancelAfter int
+	}{
+		{"all_coins", -1},
+		{"cancel_before_first", 0},
+		{"cancel_after_first", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := dailyEnv(t)
+			dailyOnlyCoins(v, 3)
+			waits := 0
+			v.e.cfg.Sleep = func(ctx context.Context, d time.Duration) error {
+				if d >= 20*time.Second && d <= 40*time.Second {
+					if got := v.b.Count(dailyAddPath); got != waits {
+						t.Fatalf("等待前已发 %d 次投币请求，期望 %d 次", got, waits)
+					}
+					waits++
+					if tc.cancelAfter == v.b.Count(dailyAddPath) {
+						return context.Canceled
+					}
+				}
+				v.now = v.now.Add(d)
+				return ctx.Err()
+			}
+			r := v.runTask(42, TaskDaily)
+			s := step(t, r, "投币")
+			wantCoins, wantWaits := 3, 3
+			if tc.cancelAfter >= 0 {
+				wantCoins, wantWaits = tc.cancelAfter, tc.cancelAfter+1
+				if s.Status != api.StatusFailed || s.Reason != string(bili.ReasonCanceled) {
+					t.Fatalf("等待取消后结果 = %+v", s)
+				}
+				if !strings.Contains(r.Note, fmt.Sprintf("今天投币 %d 个", wantCoins)) {
+					t.Fatalf("等待取消后丢失成功数量：%+v", r)
+				}
+			} else if s.Status != api.StatusOK {
+				t.Fatalf("等待后投币失败：%+v", s)
+			}
+			if got := v.b.Count(dailyAddPath); got != wantCoins || waits != wantWaits {
+				t.Fatalf("投币 %d 次、等待 %d 次，期望 %d 次、%d 次", got, waits, wantCoins, wantWaits)
+			}
+		})
+	}
+}
+
+func TestDailyCoinDelaySetting(t *testing.T) {
+	v := dailyEnv(t)
+	for _, bad := range [][2]int{{-1, 10}, {30, 20}, {0, 601}} {
+		s := v.e.Settings()
+		s.Tasks.Daily.CoinDelayMin, s.Tasks.Daily.CoinDelayMax = bad[0], bad[1]
+		if _, err := v.e.UpdateSettings(s); err == nil {
+			t.Errorf("等待 %v 秒应被拒绝", bad)
+		}
+	}
+	dailyOnlyCoins(v, 2)
+	v.set(func(s *api.Settings) { s.Tasks.Daily.CoinDelayMin, s.Tasks.Daily.CoinDelayMax = 0, 0 })
+	var waits []time.Duration
+	v.e.cfg.Sleep = func(ctx context.Context, d time.Duration) error {
+		if d >= 20*time.Second {
+			waits = append(waits, d)
+		}
+		v.now = v.now.Add(d)
+		return ctx.Err()
+	}
+	if s := step(t, v.runTask(42, TaskDaily), "投币"); s.Status != api.StatusOK || v.b.Count(dailyAddPath) != 2 || len(waits) != 0 {
+		t.Fatalf("关闭等待后：%+v，等待 %v", s, waits)
+	}
+	v.set(func(s *api.Settings) {
+		s.Tasks.Daily.Coins = 5
+		s.Tasks.Daily.CoinDelayMin, s.Tasks.Daily.CoinDelayMax = 90, 90
+	})
+	v.b.JSON(dailyExpPath, 20)
+	v.runTask(42, TaskDaily)
+	if len(waits) != 3 || waits[0] != 90*time.Second {
+		t.Fatalf("自定义等待 = %v", waits)
 	}
 }

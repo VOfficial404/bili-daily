@@ -25,13 +25,15 @@ func DefaultSettings() api.Settings {
 		ReportRetentionDays: 30,
 		Tasks: api.TaskSettings{
 			Daily: api.DailyOptions{
-				Enabled:     true,
-				Watch:       true,
-				Share:       true,
-				Coins:       5,
-				StopAtLevel: 6,
-				Like:        true,
-				UpIDs:       []int64{},
+				Enabled:      true,
+				Watch:        true,
+				Share:        true,
+				Coins:        5,
+				StopAtLevel:  6,
+				Like:         true,
+				CoinDelayMin: 20,
+				CoinDelayMax: 40,
+				UpIDs:        []int64{},
 			},
 			VipPoint:       api.ToggleOptions{Enabled: true},
 			VipPrivilege:   api.ToggleOptions{Enabled: true},
@@ -107,6 +109,9 @@ func checkSettings(s *api.Settings) error {
 	}
 	if d.StopAtLevel < 0 || d.StopAtLevel > 6 {
 		return errors.New("停止投币的等级要在 0 到 6 之间")
+	}
+	if d.CoinDelayMin < 0 || d.CoinDelayMax > 600 || d.CoinDelayMin > d.CoinDelayMax {
+		return errors.New("投币前等待要在 0 到 600 秒之间，且最短不能超过最长")
 	}
 	d.UpIDs = cleanIDs(d.UpIDs)
 

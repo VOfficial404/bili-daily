@@ -98,6 +98,8 @@ function options(app, form, id, previews) {
         number(form, p("coins"), "每天投币数", "0 表示不投币。", { min: 0, max: 5 }),
         number(form, p("keep_coins"), "至少保留硬币", "余额低于这个数就不投了。"),
         number(form, p("stop_at_level"), "到这个等级后停止投币", "0 表示一直投。", { min: 0, max: 6 }),
+        number(form, p("coin_delay_min"), "投币前最短等待（秒）", "每次投币前在最短和最长之间随机等待。", { min: 0, max: 600 }),
+        number(form, p("coin_delay_max"), "投币前最长等待（秒）", "都填 0 表示不额外等待。", { min: 0, max: 600 }),
         toggle(form, p("like"), "投币时顺便点赞"),
         up(p("up_ids"), "优先观看和投币的 UP 主", "排在前面的先看、先投。不选时从关注和排行榜里挑。", false),
       ];

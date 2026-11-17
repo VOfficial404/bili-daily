@@ -210,6 +210,14 @@ func dailyCoins(x *Ctx, picker *dailyPicker, need, wanted int) int {
 			if coins >= limit {
 				continue
 			}
+			// 每次实际投币前留出操作时间，首枚也等待；取消后不再花币。
+			if delay := dailyCoinDelay(x.Set.Tasks.Daily); delay > 0 {
+				x.Infof("投币前等待 %d 秒", int(delay/time.Second))
+				if !x.Sleep(delay) {
+					lastErr = context.Canceled
+					break
+				}
+			}
 			err = x.C.VideoAddCoin(x, v, x.Set.Tasks.Daily.Like)
 		}
 		switch {
@@ -252,6 +260,11 @@ func dailyCoins(x *Ctx, picker *dailyPicker, need, wanted int) int {
 		x.OK("投币", "%s", detail)
 	}
 	return n
+}
+
+// dailyCoinDelay 是这次投币前额外等待的时间：设置的最短到最长之间随机取整秒
+func dailyCoinDelay(o api.DailyOptions) time.Duration {
+	return time.Duration(o.CoinDelayMin+rand.IntN(o.CoinDelayMax-o.CoinDelayMin+1)) * time.Second
 }
 
 // prepareCoinDevice 补齐扫码时可能没取到的设备 Cookie；已有标识保持不变。

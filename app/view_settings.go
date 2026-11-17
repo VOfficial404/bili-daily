@@ -228,6 +228,8 @@ func (a *app) settingsTaskOptions(c *ui.Context, id string) {
 		a.settingsNumber(c, "每日投币数", &d.Coins, "0～5 个，0 表示不投币。")
 		a.settingsNumber(c, "保留硬币数", &d.KeepCoins, "余额至少保留这么多硬币。")
 		a.settingsNumber(c, "停止投币等级", &d.StopAtLevel, "0～6 级，0 表示一直投币。")
+		a.settingsNumber(c, "投币前最短等待（秒）", &d.CoinDelayMin, "0～600 秒，每次投币前随机等待。")
+		a.settingsNumber(c, "投币前最长等待（秒）", &d.CoinDelayMax, "0～600 秒，不小于最短等待；都填 0 表示不等待。")
 		a.settingsSwitch(c, "daily-like", "投币时点赞", &d.Like)
 		a.settingsUPPicker(c, false)
 	case "charge":

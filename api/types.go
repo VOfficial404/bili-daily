@@ -197,14 +197,17 @@ type ToggleOptions struct {
 }
 
 type DailyOptions struct {
-	Enabled     bool    `json:"enabled"`
-	Watch       bool    `json:"watch"`
-	Share       bool    `json:"share"`
-	Coins       int     `json:"coins"`         // 每天投几个币，0~5
-	KeepCoins   int     `json:"keep_coins"`    // 至少留下这么多硬币
-	StopAtLevel int     `json:"stop_at_level"` // 到这个等级后不再投币，0 表示一直投
-	Like        bool    `json:"like"`          // 投币时顺便点赞
-	UpIDs       []int64 `json:"up_ids"`        // 优先看、投这些 UP 主的视频；空时从关注和排行榜里选
+	Enabled     bool `json:"enabled"`
+	Watch       bool `json:"watch"`
+	Share       bool `json:"share"`
+	Coins       int  `json:"coins"`         // 每天投几个币，0~5
+	KeepCoins   int  `json:"keep_coins"`    // 至少留下这么多硬币
+	StopAtLevel int  `json:"stop_at_level"` // 到这个等级后不再投币，0 表示一直投
+	Like        bool `json:"like"`          // 投币时顺便点赞
+	// 每次投币前额外等待 CoinDelayMin～CoinDelayMax 秒（随机），都为 0 表示不额外等待
+	CoinDelayMin int     `json:"coin_delay_min"`
+	CoinDelayMax int     `json:"coin_delay_max"`
+	UpIDs        []int64 `json:"up_ids"` // 优先看、投这些 UP 主的视频；空时从关注和排行榜里选
 }
 
 type ChargeOptions struct {

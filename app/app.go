@@ -18,7 +18,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const version = "0.1.2"
+const version = "0.1.3"
 
 // app 的界面状态只在主线程读写，后台请求通过 post 返回结果。
 type app struct {

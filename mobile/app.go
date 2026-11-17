@@ -15,7 +15,7 @@ import (
 	"github.com/nsgo-dev/nsgo/ui"
 )
 
-const mobileVersion = "0.1.2"
+const mobileVersion = "0.1.3"
 
 type mobileApp struct {
 	cx                          *core.Scope

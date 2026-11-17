@@ -8,6 +8,8 @@ services:
     environment:
       # 客户端连接时要填的令牌。留空时自动生成，用 docker compose exec bili-daily bili-daily token 查看
       BILI_DAILY_TOKEN: ${BILI_DAILY_TOKEN:-}
+      # 设为 1 时不去 GitHub 查新版本
+      BILI_DAILY_NO_UPDATE_CHECK: ${BILI_DAILY_NO_UPDATE_CHECK:-}
     ports:
       # 默认只监听服务器本机，通过 SSH 隧道或 HTTPS 反向代理访问。
       # 确实要直接对外开放，改成 "8686:8686"（明文 HTTP，令牌会被看到，不推荐）

@@ -260,6 +260,14 @@ em { font-style: normal; }
 .howto li b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 2px; }
 .howto li::before { content: counter(n); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 750; background: var(--accent-soft); color: var(--accent); }
 @media (max-width: 860px) { .deploy { grid-template-columns: 1fr; gap: 28px; } }
+.envs { margin-top: 36px; max-width: 52em; }
+.envs h3 { font-size: 18px; color: var(--ink); }
+.envs p { margin-top: 8px; color: var(--ink-2); font-size: 15px; }
+.envs table { margin-top: 16px; width: 100%; border-collapse: collapse; font-size: 14px; }
+.envs th, .envs td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+.envs th { color: var(--ink); font-weight: 650; }
+.envs td code { white-space: nowrap; overflow-wrap: normal; }
+@media (max-width: 640px) { .envs table { display: block; overflow-x: auto; } .envs td:last-child { min-width: 11em; } }
 
 /* 下载 */
 .dl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 44px; }

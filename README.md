@@ -93,11 +93,79 @@ curl -fsSL https://raw.githubusercontent.com/VOfficial404/bili-daily/main/script
 | `bili-daily run` | 立即跑一轮然后退出，可以交给 cron |
 | `bili-daily token` | 显示令牌 |
 
-| 环境变量 | 默认 | 说明 |
+数据目录、监听地址这些启动参数用环境变量改，见下面的[环境变量](#环境变量)。
+
+</details>
+
+### 环境变量
+
+大多数情况下什么都不用设。投币数、请求节奏、代理、推送这些日常设置都在网页面板或客户端的「设置」里改，不用碰环境变量。只有下面这几项要在启动服务端之前定好：
+
+| 环境变量 | 默认 | 什么时候要改 |
 |---|---|---|
-| `BILI_DAILY_DATA` | 程序旁边的 `data` | 数据目录 |
-| `BILI_DAILY_ADDR` | `127.0.0.1:8686` | 监听地址 |
-| `BILI_DAILY_TOKEN` | 自动生成 | 令牌 |
+| `BILI_DAILY_TOKEN` | 自动生成，存在数据目录里 | 想自己定一个好记的令牌。设了之后以它为准 |
+| `BILI_DAILY_PORT` | `8686` | 只对 Docker 有用：8686 端口被别的程序占了，换一个本机端口 |
+| `BILI_DAILY_NO_UPDATE_CHECK` | 不设 | 设为 `1`：不再去 GitHub 查有没有新版本 |
+| `BILI_DAILY_ADDR` | `127.0.0.1:8686` | 不用 Docker 时改监听地址或端口。`127.0.0.1` 表示只有本机能连 |
+| `BILI_DAILY_DATA` | 程序旁边的 `data` | 不用 Docker 时把账号和报告放到别的目录 |
+| `BILI_DAILY_DIR` | `/opt/bili-daily` | 只对安装脚本有用：装到别的目录 |
+
+改完要重启服务端才生效。按你的装法选一种：
+
+<details>
+<summary><b>Docker</b></summary>
+
+在 `compose.yaml` 旁边新建一个 `.env` 文件，一行一个：
+
+```bash
+BILI_DAILY_TOKEN=换成你自己的令牌
+BILI_DAILY_PORT=18686
+BILI_DAILY_NO_UPDATE_CHECK=1
+```
+
+然后运行 `docker compose up -d`。改了端口，面板地址也跟着变成 `http://127.0.0.1:18686`。容器里的数据目录和监听地址已经定好，不要改 `BILI_DAILY_DATA` 和 `BILI_DAILY_ADDR`。
+
+之前下载的 `compose.yaml` 里如果没有 `BILI_DAILY_NO_UPDATE_CHECK` 这一行，`.env` 里写了也不会生效。重新下载一份 `compose.yaml` 覆盖就行，数据在 `data` 目录里，不会丢。
+
+</details>
+
+<details>
+<summary><b>安装脚本（systemd）</b></summary>
+
+第一次安装时可以带上变量。注意要写在 `sudo` 后面，否则会被 `sudo` 丢掉：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VOfficial404/bili-daily/main/scripts/install.sh | sudo BILI_DAILY_ADDR=127.0.0.1:18686 sh
+```
+
+装好以后再改，重跑安装脚本**不会**改动已有的服务配置，要这样改：
+
+```bash
+sudo systemctl edit bili-daily
+```
+
+在打开的编辑器里写：
+
+```ini
+[Service]
+Environment=BILI_DAILY_NO_UPDATE_CHECK=1
+Environment=BILI_DAILY_ADDR=127.0.0.1:18686
+```
+
+保存后运行 `sudo systemctl restart bili-daily`。
+
+</details>
+
+<details>
+<summary><b>直接运行程序</b></summary>
+
+写在命令前面，例如：
+
+```bash
+BILI_DAILY_DATA=/srv/bili-daily BILI_DAILY_ADDR=127.0.0.1:18686 ./bili-daily
+```
+
+之后用 `login`、`run`、`token` 也要带上同样的 `BILI_DAILY_DATA`，不然它们会去找另一个数据目录。`bili-daily help` 也能看到这份列表。
 
 </details>
 

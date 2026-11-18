@@ -208,11 +208,11 @@ BILI_DAILY_DATA=/srv/bili-daily BILI_DAILY_ADDR=127.0.0.1:18686 ./bili-daily
 go test ./...                                               # 服务端和引擎
 go build ./cmd/bili-daily                                   # 服务端，网页面板已经嵌进去
 (cd app && go tool mygo build)                              # 桌面客户端
-(cd mobile && go tool nsgo build -target android_arm64)     # Android
-(cd mobile && go tool nsgo build -target ios)               # iOS，需要 macOS 和 Xcode
+(cd app && go tool mygo build -platform android/arm64)      # Android，需要 Android SDK、NDK 和 JDK 17
+(cd app && go tool mygo build -platform ios)                # iOS，需要 macOS、Xcode 和描述文件
 ```
 
-桌面客户端用 [MyGo](https://mygo.run) 写成。等 MyGo 的手机支持合并（[egoist/mygo#940](https://github.com/egoist/mygo/pull/940)），手机 App 也会搬进 `app/`，和桌面共用一套代码；在那之前，手机 App 暂时用 [NSGo](https://github.com/nsgo-dev/nsgo)。迁移的步骤见设计文档。
+桌面客户端和手机 App 用 [MyGo](https://mygo.run) 写成，共用 `app/` 一套代码。`go tool mygo doctor` 检查构建手机版缺什么。
 
 ## 用之前，先读这些
 

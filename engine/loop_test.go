@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -102,5 +103,36 @@ func TestManualRunOverHTTPAndCancel(t *testing.T) {
 	last := v.e.State().Accounts[0].LastRun
 	if last == nil || last.Trigger != "manual" || !strings.HasPrefix(last.Summary, "已中止") || last.Status == api.StatusOK {
 		t.Errorf("last run = %+v", last)
+	}
+}
+
+// 手机后台任务靠 Settle 补跑：到点的那一轮做完才返回，系统给的时间用完时先返回
+func TestSettleWaitsForDueRun(t *testing.T) {
+	release := make(chan struct{})
+	useTasks(t, toggle(TaskDaily, "每日任务", func(x *Ctx) {
+		select {
+		case <-release:
+			x.OK("观看视频", "ok")
+		case <-x.Done():
+			x.Fail("观看视频", x.Err())
+		}
+	}))
+	v := newEnv(t) // 今天 09:30 的那一轮已经错过
+	v.login(42)
+	v.started()
+
+	short, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := v.e.Settle(short); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("补跑还没做完，Settle 应该等到超时：%v", err)
+	}
+	close(release)
+	ctx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+	if err := v.e.Settle(ctx); err != nil {
+		t.Fatalf("Settle: %v", err)
+	}
+	if a := v.e.State().Accounts[0]; a.LastRun == nil || a.LastRun.Trigger != "catchup" || a.LastRun.Status != api.StatusOK || a.Running != nil {
+		t.Errorf("account = %+v", a)
 	}
 }

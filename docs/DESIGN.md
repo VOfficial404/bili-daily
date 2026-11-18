@@ -20,7 +20,7 @@ bili-daily 定时替 B 站账号完成每日任务。功能参考 [BiliBiliToolP
 flowchart LR
     subgraph 客户端
         D[桌面客户端<br>MyGo]
-        M[手机 App<br>NSGo]
+        M[手机 App<br>MyGo，同一份代码]
     end
     subgraph 服务端
         A[接口<br>engine/http.go]
@@ -39,7 +39,7 @@ flowchart LR
 
 - **服务器**：`cmd/bili-daily` 把它包成命令行程序，常驻运行。
 - **桌面客户端的本机运行**：客户端在自己的进程里启动 `engine`，接口只监听 `127.0.0.1` 的随机端口，令牌保存在本机数据目录，界面像连服务器一样连过去。
-- **手机 App 的本机运行**：同上。手机系统可能暂停或结束后台进程，本机任务只有在 App 打开时可靠运行。回到前台时调用 `Engine.Wake()` 重新检查并补跑；后台保留引擎和二维码，避免切换到 B 站后丢失扫码会话。稳定定时推荐连服务器。
+- **手机 App 的本机运行**：同上。手机系统会暂停或结束后台的 App，本机任务只有在 App 打开时可靠运行。回到前台时调用 `Engine.Wake()` 重新检查并补跑；系统给出后台时间时用 `Engine.Settle` 补上到点的那一轮（见下面「手机端」）。稳定定时推荐连服务器。
 
 客户端连服务器和连本机走的是同一套接口，所以界面只有一份逻辑。
 
@@ -51,7 +51,7 @@ flowchart LR
 
 - Gojo 只支持 macOS 和 Linux，不支持 Windows，也不能编进 Android 和 iOS 的 App。「在本机运行」在 Windows 和手机上就没法做，除非把每个任务用 Go 再写一遍。
 - 它是 v0.0.1 的实验性语言：标准库的 HTTP 客户端不能设代理，`crypto` 里没有 RSA（刷新 Cookie 要用），TLS 依赖系统里的 OpenSSL。
-- 桌面客户端（MyGo）和手机 App（NSGo）本来就是 Go。服务端也用 Go，引擎可以直接编进客户端。
+- 客户端（MyGo）本来就是 Go。服务端也用 Go，引擎可以直接编进客户端。
 
 ## 目录
 
@@ -63,28 +63,23 @@ bili/bilitest/    测试用的假 B 站
 engine/           服务端：账号、每日计划、任务、运行报告、推送、接口
 cmd/bili-daily/   服务器上的命令行程序
 web/              服务器自带的网页面板：嵌进程序的静态页面（无构建步骤的原生 JS），通过 /api 取数据
-app/              MyGo 客户端（单独的 Go 模块）；目前用于桌面，窄窗口已有紧凑布局，后续接入手机端
-mobile/           过渡期的 NSGo 手机 App（单独的 Go 模块）
+app/              MyGo 客户端（单独的 Go 模块）：桌面和手机共用一套界面，平台入口在 platform_desktop.go / platform_mobile.go
 scripts/          服务器的安装脚本
 site/             项目主页（GitHub Pages）；图标和截图在发布时从 web/static 和 docs/images 拷入
 internal/icongen/ 画应用图标的小程序，桌面、托盘和手机的图标都由它生成
 docs/research/    整理的 B 站接口资料，和 NSGo 可行性的记录
 ```
 
-`app` 和 `mobile` 是单独的 Go 模块，用 `replace` 指向上一级目录：这样服务端的 `go.mod` 里没有界面库。
+`app` 是单独的 Go 模块，用 `replace` 指向上一级目录：这样服务端的 `go.mod` 里没有界面库。
 
-### 迁移到 MyGo 手机端
+### 手机端
 
-目标是让桌面和手机共用 `app/` 一套 MyGo 界面，减少两份界面的维护。现在已把连接、本机引擎生命周期、设置合并与展示辅助逻辑放到无界面依赖的 `client` 包；`app/` 的紧凑布局已用于窄窗口。令牌通过 `mygo.Secrets` 保存，手机支持落地后由它映射到 iOS Keychain / Android Keystore。
+桌面和手机共用 `app/` 一套 MyGo 界面。平台入口按构建标签分开：`platform_desktop.go` 放托盘和关闭到托盘，`platform_mobile.go`（`ios || android`）放手机的部分。令牌通过 `mygo.Secrets` 保存，手机上是 iOS Keychain / Android Keystore。
 
-[MyGo PR #940](https://github.com/egoist/mygo/pull/940) 合并并发布后，具体迁移步骤：
-
-1. 在 `app/` 增加 iOS / Android 平台入口，用同一模块执行 `mygo build -platform ios` 或 `mygo build -platform android`；桌面托盘和关闭到托盘逻辑留在桌面文件。
-2. 用 `ui/mobile` 的栏和 sheet 适配手机布局，处理安全区域、键盘与页面前进返回（`Window.Push/Pop`）。
-3. 为本机引擎接入 `plugins/background`，保留前台唤醒补跑，并在真机验证切换到 B 站扫码和后台恢复。
-4. 完成真机验证后删除 `mobile/` 及 NSGo 依赖，更新 CI 和发布流程，统一从 `app/` 生成各平台产物。
-
-风险：该 PR 尚未合并，当前不依赖其中任何 API，NSGo 手机端继续工作；PR 说明 Android 尚未在设备上测试，后台执行和系统生命周期需要特别验证。
+- **布局**：手机沿用窄窗口布局，底部标签栏铺到屏幕底边、键盘弹出时让出位置；服务器地址用网址键盘。扫码弹窗在手机上可以直接在 B 站 App 里打开或复制链接。
+- **后台**：本机运行时登记 `plugins/background` 的后台任务（每小时一次、需要网络，实际时间由系统决定，iOS 很少给）。系统启动它时等本机引擎启动，再用 `Engine.Settle` 补上到点的那一轮并等它做完；回到前台（`Power.OnResume`）时 `Engine.Wake` 补跑并刷新状态。只有选了「下次打开时自动开始」才会在后台启动引擎。
+- **从 NSGo 版升级**：v0.1.3 及以前的手机 App 用 NSGo 写成，应用标识和 Android 签名密钥相同，可以覆盖安装（versionCode 都是 主×10000+次×100+修订）。第一次启动时 `migrateNSGo` 把它的本机数据目录和 `storage.json` 里的服务器地址、代理、记住的令牌搬过来：Android 上旧数据在 `files/`，新数据目录是它下面的 `files/Bili Daily`；iOS 上旧数据在 `Application Support/<应用标识>`。明文令牌搬进系统凭据存储后删掉 `storage.json`。
+- **发布**：Android 只构建 arm64，版本发布用仓库机密里的发布密钥签名，CI 核对证书指纹。项目没有 Apple 开发者账号，而 MyGo 只会用描述文件签 iOS 设备包：`.github/ios-unsigned.sh` 在 CI 里造一次性的自签名身份和描述文件让它打包，再去掉签名，发布未签名 IPA，由用户用 AltStore / SideStore 签名安装。MyGo 的 iOS 宿主最低支持 iOS 17。
 
 ## 每日计划
 

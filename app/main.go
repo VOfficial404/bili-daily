@@ -27,6 +27,7 @@ func main() {
 		a.cancel()
 		a.session.Stop()
 	})
+	beforeRun(a)
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}

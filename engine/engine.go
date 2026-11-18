@@ -347,6 +347,34 @@ func (e *Engine) Wake() {
 	}
 }
 
+// Settle 补上到点的运行并等它们做完，没有要做的就立即返回。手机的后台任务调用：
+// 系统给的时间用完时 ctx 结束，Settle 返回 ctx 的错误，没做完的那一轮由 Stop 中止。
+func (e *Engine) Settle(ctx context.Context) error {
+	e.Wake()
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		busy := false
+		for _, a := range e.accountList() {
+			acc := a.status()
+			if acc.Running != nil || acc.NextRun != nil && !acc.NextRun.After(e.now()) {
+				busy = true
+				break
+			}
+		}
+		if !busy {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-e.ctx.Done():
+			return e.ctx.Err()
+		case <-tick.C:
+		}
+	}
+}
+
 // RunAll 让所有参加每日计划的空闲账号立即跑一轮，返回实际触发的数量
 func (e *Engine) RunAll() int {
 	n := 0

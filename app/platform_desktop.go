@@ -1,3 +1,5 @@
+//go:build !ios && !android
+
 package main
 
 import (
@@ -6,11 +8,13 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// 当前应用使用桌面入口，暂不添加构建标签。
-// 手机窗口与生命周期入口将放在 platform_mobile.go，届时为平台文件添加互斥构建标签。
+// 桌面入口：本机运行时留在托盘里，关闭窗口只是隐藏。手机入口见 platform_mobile.go。
 
 //go:embed resources/tray.png
 var trayIcon []byte
+
+// beforeRun 在 App.Run 之前登记的东西；桌面没有
+func beforeRun(*app) {}
 
 func configurePlatform(a *app, win *mygo.Window) {
 	var tray *mygo.Tray

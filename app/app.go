@@ -18,7 +18,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const version = "0.1.3"
+const version = "0.1.4"
 
 // app 的界面状态只在主线程读写，后台请求通过 post 返回结果。
 type app struct {
@@ -83,13 +83,22 @@ type app struct {
 	upPaste                         [2]upPasteInput
 	fetchImage                      func(string) ([]byte, error)
 	updateOpen                      bool
-	openURL                         func(string) error // 用系统浏览器打开网址，由平台入口设置
+	openURL                         func(string) error // 用系统浏览器或对应的 App 打开网址，由平台入口设置
+	copyText                        func(string)       // 复制到剪贴板；只有手机入口设置
+	mobile                          bool               // 手机入口：本机运行受系统后台限制，扫码可以直接跳到 B 站 App
 }
 
 func newApp(s store, post func(func())) *app {
-	p := s.load()
 	ctx, cancel := context.WithCancel(context.Background())
-	return &app{post: post, store: s, session: &client.Session{}, mode: p.Mode, server: p.Server, remember: p.Remember, proxy: p.Proxy, autoLocal: p.AutoLocal, page: "今天", busy: map[string]bool{}, inputs: map[string]string{}, newEngine: engine.New, ctx: ctx, cancel: cancel, autoScroll: true, faces: map[string]*ui.Bitmap{}, faceTried: map[string]bool{}, fetchImage: downloadImage}
+	a := &app{post: post, store: s, session: &client.Session{}, page: "今天", busy: map[string]bool{}, inputs: map[string]string{}, newEngine: engine.New, ctx: ctx, cancel: cancel, autoScroll: true, faces: map[string]*ui.Bitmap{}, faceTried: map[string]bool{}, fetchImage: downloadImage}
+	a.loadPrefs()
+	return a
+}
+
+// loadPrefs 从存储读回连接偏好
+func (a *app) loadPrefs() {
+	p := a.store.load()
+	a.mode, a.server, a.remember, a.proxy, a.autoLocal = p.Mode, p.Server, p.Remember, p.Proxy, p.AutoLocal
 }
 func (a *app) async(work func() func()) {
 	a.wg.Add(1)

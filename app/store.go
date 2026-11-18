@@ -27,9 +27,11 @@ type store interface {
 
 type systemStore struct{}
 
+const defaultServer = "http://127.0.0.1:8686"
+
 func (systemStore) dir() (string, error) { return mygo.App.Path(mygo.PathUserData) }
 func (s systemStore) load() prefs {
-	p := prefs{Server: "http://127.0.0.1:8686"}
+	p := prefs{Server: defaultServer}
 	if d, e := s.dir(); e == nil {
 		if b, e := os.ReadFile(filepath.Join(d, "prefs.json")); e == nil {
 			_ = json.Unmarshal(b, &p)
@@ -42,14 +44,19 @@ func (s systemStore) save(p prefs) error {
 	if e != nil {
 		return e
 	}
-	if e = os.MkdirAll(d, 0700); e != nil {
+	return writePrefs(d, p)
+}
+
+// writePrefs 把连接偏好写进 dir/prefs.json
+func writePrefs(dir string, p prefs) error {
+	if e := os.MkdirAll(dir, 0700); e != nil {
 		return e
 	}
 	b, e := json.MarshalIndent(p, "", "  ")
 	if e != nil {
 		return e
 	}
-	return os.WriteFile(filepath.Join(d, "prefs.json"), b, 0600)
+	return os.WriteFile(filepath.Join(dir, "prefs.json"), b, 0600)
 }
 func (systemStore) token() (string, error) {
 	b, e := mygo.Secrets.Get("server-token")

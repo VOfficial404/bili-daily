@@ -113,7 +113,11 @@ func (a *app) view(c *ui.Context) {
 				})
 			}
 			ui.Scroll(c.Key("page-" + a.page)).Grow(1).MinHeight(0).Children(func() {
-				ui.Column(c).Padding(28, 32, 32).Gap(20).MaxWidth(1040).Children(func() {
+				pad := [3]float32{28, 32, 32}
+				if a.narrow {
+					pad = [3]float32{16, 16, 24}
+				}
+				ui.Column(c).Padding(pad[0], pad[1], pad[2]).Gap(20).MaxWidth(1040).Children(func() {
 					switch a.page {
 					case "今天":
 						a.overviewView(c)
@@ -196,10 +200,17 @@ func (a *app) loggedOut() int {
 	return n
 }
 
-// tabBar 是窄窗口底部的标签栏：图标在上，文字在下
+// tabBar 是窄窗口和手机底部的标签栏：图标在上，文字在下。
+// 手机上铺到屏幕底边（系统的手势条下面也是同一个颜色），键盘弹出时让出位置。
 func (a *app) tabBar(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).Padding(4, 6, 6).Background(t.Surface).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+	_, _, bottom, _ := c.SafeArea()
+	bar := ui.Row(c).Padding(4, 6, 6+bottom, 6).Margin(0, 0, -bottom, 0).Background(t.Surface).BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
+	if bottom > 120 {
+		bar.Hidden(true)
+		return
+	}
+	bar.Children(func() {
 		for _, p := range navPages {
 			col := t.TextMuted
 			if a.page == p.id {
@@ -265,7 +276,8 @@ func (a *app) connectView(c *ui.Context) {
 					ui.Segmented(c.Key("mode"), &a.mode, "连接服务器", "在本机运行").Disabled(a.connecting)
 					if a.mode == 0 {
 						ui.Field(c, "服务器地址", func() {
-							ui.TextInput(c.Key("server"), &a.server).Placeholder("http://127.0.0.1:8686").Disabled(a.connecting)
+							ui.TextInput(c.Key("server"), &a.server).Placeholder("http://127.0.0.1:8686").Disabled(a.connecting).
+								Keyboard(ui.KeyboardURL).Capitalize(ui.CapitalizeNone).Autocorrect(false)
 						})
 						ui.Field(c, "令牌", func() { ui.TextInput(c.Key("token"), &a.token).Password().Label("令牌").Disabled(a.connecting) })
 						if ui.Checkbox(c, &a.remember, "记住令牌，下次打开自动连接").Disabled(a.connecting).Changed() && !a.remember {
@@ -274,9 +286,13 @@ func (a *app) connectView(c *ui.Context) {
 								a.connectErr = "删除记住的令牌失败：" + err.Error()
 							}
 						}
-						muted(c, "令牌在服务器上用 bili-daily token 查看，记住后保存在系统凭据管理器里。").FontSize(12)
+						muted(c, "令牌在服务器上用 bili-daily token 查看，记住后保存在系统的凭据存储里。").FontSize(12)
 					} else {
-						muted(c, "没有服务器也能用：任务由这台电脑执行，只在程序开着时运行。关掉窗口后留在托盘里继续跑，错过的那一轮下次打开时补上。").FontSize(13)
+						local := "没有服务器也能用：任务由这台电脑执行，只在程序开着时运行。关掉窗口后留在托盘里继续跑，错过的那一轮下次打开时补上。"
+						if a.mobile {
+							local = "没有服务器也能用：任务由这台手机执行。系统会暂停后台的 App，到点的那一轮在系统给出时间时或下次打开 App 时补上；要准时运行，请连接服务器。"
+						}
+						muted(c, local).FontSize(13)
 						ui.Field(c, "代理（可选）", func() {
 							ui.Row(c).Gap(8).Children(func() {
 								ui.TextInput(c.Key("local-proxy"), &a.proxy).Grow(1).Placeholder("http://127.0.0.1:7890").Disabled(a.connecting)

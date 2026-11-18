@@ -41,6 +41,15 @@ func (a *app) dialogs(c *ui.Context) {
 				ui.Text(c, s).FontSize(14)
 			})
 			errorText(c, a.qrErr)
+			if a.mobile && a.qr.URL != "" && a.qr.State != "expired" {
+				// 扫码的手机就是这一台：直接跳到 B 站 App 确认登录
+				ui.Column(c).FillWidth().Gap(8).Children(func() {
+					ui.PrimaryButton(c.Key("qr-open"), "在 B 站 App 里打开").OnClick(a.openQR)
+					if a.copyText != nil {
+						ui.Button(c.Key("qr-copy"), "复制链接").OnClick(func() { a.copyText(a.qr.URL); a.toast("链接已复制") })
+					}
+				})
+			}
 			ui.Row(c).Gap(8).Children(func() {
 				if a.qr.State == "expired" || a.qrErr != "" {
 					ui.PrimaryButton(c, "换一张").Disabled(a.qrBusy).OnClick(a.startQR)
@@ -137,5 +146,23 @@ func (a *app) submitUnfollow() {
 			a.toast("已安排批量取关")
 			a.poll()
 		}
+	})
+}
+
+// openQR 把扫码链接交给系统，由 B 站 App 打开确认登录；没装 B 站 App 时提示改用截图
+func (a *app) openQR() {
+	open, url, gen := a.openURL, a.qr.URL, a.qrGen
+	if open == nil || url == "" {
+		return
+	}
+	a.async(func() func() {
+		if err := open(url); err != nil {
+			return func() {
+				if gen == a.qrGen {
+					a.qrErr = "无法打开链接。请截图，在 B 站「扫一扫」里从相册选择这张二维码。"
+				}
+			}
+		}
+		return nil
 	})
 }

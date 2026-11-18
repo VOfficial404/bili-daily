@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/VOfficial404/bili-daily v0.0.0
-	github.com/egoist/mygo v0.9.0
+	github.com/egoist/mygo v0.10.0
 )
 
 require (

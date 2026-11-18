@@ -41,18 +41,3 @@ jobs:
 
       - run: go vet ./...
       - run: go test ./...
-
-  mobile:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: mobile/go.mod
-
-      - run: go vet ./...
-      - run: go test ./...

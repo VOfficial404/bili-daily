@@ -15,8 +15,9 @@ import (
 func main() {
 	save("app/resources/icon.png", tile(512, 116, 1))
 	save("app/resources/tray.png", tray(32))
-	// 手机系统自己裁圆角：铺满整张、不留透明，图案缩小一些留在安全区里
-	save("mobile/assets/icon.png", tile(1024, 0, 0.84))
+	// Android 自适应图标的前景：铺满不留透明，启动器只露出中间 72/108，图案缩小留在里面。
+	// 不放 resources/：那里的东西会随每个平台的安装包发出去
+	save("app/icons/android.png", tile(1024, 0, 0.62))
 }
 
 func save(name string, im image.Image) {

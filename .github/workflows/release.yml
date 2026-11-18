@@ -22,8 +22,6 @@ jobs:
           fail=0
           grep -q "\"version\": \"$v\"" app/mygo.json || { echo "app/mygo.json 的 version 不是 $v"; fail=1; }
           grep -q "const version = \"$v\"" app/app.go || { echo "app/app.go 的 version 不是 $v"; fail=1; }
-          grep -q "^version: $v\$" mobile/nsgo.yaml || { echo "mobile/nsgo.yaml 的 version 不是 $v"; fail=1; }
-          grep -q "const mobileVersion = \"$v\"" mobile/app.go || { echo "mobile/app.go 的 mobileVersion 不是 $v"; fail=1; }
           grep -q "^## $GITHUB_REF_NAME\$" CHANGELOG.md || { echo "CHANGELOG.md 里没有「## $GITHUB_REF_NAME」"; fail=1; }
           exit $fail
       - run: go test ./...

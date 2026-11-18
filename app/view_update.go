@@ -111,7 +111,7 @@ func (a *app) updateNotice(c *ui.Context) {
 			ui.Row(c).Gap(12).Children(func() {
 				ui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(c, "有新版本 "+r.Version).FontSize(15).Bold()
-					muted(c, "这台电脑上是 "+version+"，更新后才有新功能和修复。").FontSize(12)
+					muted(c, "现在用的是 "+version+"，更新后才有新功能和修复。").FontSize(12)
 				})
 				if isReleaseURL(r.URL) {
 					ui.PrimaryButton(c.Key("update-download"), "去下载").OnClick(func() { a.openRelease(r.URL) })

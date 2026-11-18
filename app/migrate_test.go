@@ -74,8 +74,29 @@ func TestMigrateNSGoLocalOnly(t *testing.T) {
 	if err != nil || !moved {
 		t.Fatalf("moved=%v err=%v", moved, err)
 	}
-	if p := readPrefs(t, user); p != (prefs{Mode: 1, Server: defaultServer, Proxy: "socks5://127.0.0.1:1080"}) {
+	if p := readPrefs(t, user); p != (prefs{Mode: 1, Server: defaultServer, Proxy: "socks5://127.0.0.1:1080", AutoLocal: true}) {
 		t.Fatalf("prefs %+v", p)
+	}
+}
+
+// 搬令牌失败后用户在这一版里手动连接过：不再覆盖新偏好，但明文令牌要删掉
+func TestMigrateNSGoHalfDone(t *testing.T) {
+	legacy := t.TempDir()
+	user := filepath.Join(legacy, "Bili Daily")
+	writeLegacy(t, legacy, map[string]string{"address": "https://old.example.com", "remember": "true", "token": "secret"}, false)
+	want := prefs{Server: "https://new.example.com"}
+	if err := writePrefs(user, want); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := migrateNSGo(legacy, user, func(string) error { t.Fatal("token overwritten"); return nil })
+	if err != nil || moved {
+		t.Fatalf("moved=%v err=%v", moved, err)
+	}
+	if p := readPrefs(t, user); p != want {
+		t.Fatalf("prefs %+v", p)
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "storage.json")); !os.IsNotExist(err) {
+		t.Fatal("plaintext token left behind:", err)
 	}
 }
 

@@ -348,7 +348,7 @@ func (e *Engine) Wake() {
 }
 
 // Settle 补上到点的运行并等它们做完，没有要做的就立即返回。手机的后台任务调用：
-// 系统给的时间用完时 ctx 结束，Settle 返回 ctx 的错误，没做完的那一轮由 Stop 中止。
+// 系统给的时间用完时 ctx 结束，Settle 返回 ctx 的错误；没做完的那一轮不中止，进程被系统暂停后停在原处，下次醒来接着做。
 func (e *Engine) Settle(ctx context.Context) error {
 	e.Wake()
 	tick := time.NewTicker(time.Second)

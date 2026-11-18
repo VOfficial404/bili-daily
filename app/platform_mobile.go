@@ -24,27 +24,30 @@ func beforeRun(a *app) {
 	background.Handle(backgroundTask, func(ctx context.Context) error { return settleLocal(ctx, a) })
 }
 
-// settleLocal 等本机引擎启动（选了「下次打开时自动开始」时 autoConnect 会启动它），再补上到点的那一轮
+// settleLocal 补上本机引擎到点的那一轮。引擎在这个进程里已经在跑（用户点过「启动本机运行」）就直接补；
+// 进程是系统为后台任务新起的，就等 autoConnect 按「下次打开时自动开始」把它启动。
+// 没有引擎、也没在启动（连的是服务器，或没选自动开始）时没有要做的。
 func settleLocal(ctx context.Context, a *app) error {
-	if p := a.store.load(); p.Mode != 1 || !p.AutoLocal {
-		return nil
-	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
 		var local *engine.Engine
+		starting := false
 		failed := ""
 		mygo.RunOnMain(func() {
 			local = a.session.LocalEngine()
-			if !a.connecting {
+			starting = a.connecting
+			if !starting {
 				failed = a.connectErr
 			}
 		})
-		if local != nil {
+		switch {
+		case local != nil:
 			return local.Settle(ctx)
-		}
-		if failed != "" {
+		case failed != "":
 			return errors.New(failed)
+		case !starting:
+			return nil
 		}
 		select {
 		case <-ctx.Done():
